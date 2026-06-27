@@ -222,38 +222,43 @@ a { color: var(--sky-deep); }
   border: 2px solid var(--series-frame);
 }
 
-/* 複数冊（シリーズ束 2 冊以上／多巻もの）= 表紙の上辺にだけ紙束を覗かせる。
- * 上へ向かうほど幅を狭く・色を淡くした台形状に重ね、小口は濃色ボーダーで縁取る。
- * 表紙本体(.cover)は overflow:hidden のため、束は親 .book に擬似要素で描く。
- * 書影サイズは .cover のままなので、束の有無でカードの大きさは変わらない。 */
+/* 複数冊（シリーズ束 2 冊以上／多巻もの）= 表紙の上辺にだけ紙束をはっきり覗かせる。
+ * 上へ向かうほど幅を狭くした台形状に重ね、各層を濃い青で塗り小口を濃色ボーダーで
+ * 縁取る。表紙本体(.cover)は overflow:hidden のため束は親 .book に擬似要素で描く。
+ * 書影サイズは .cover のままなので、束の有無でカードの大きさは変わらない。
+ * 一目で「2冊以上のシリーズ/多巻」と分かるよう、十分に大きく濃く出す。 */
+/* content-visibility:auto は paint containment を常時伴い、.book の枠外へ出る
+ * 擬似要素（上辺の紙束）をクリップしてしまう。紙束のあるカードだけ解除する。 */
+.book--stacked {
+  content-visibility: visible;
+  contain: none;
+}
 .book--stacked::before,
 .book--stacked::after {
   content: "";
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  height: 0.6rem;
+  height: 0.95rem;
   border-style: solid;
   border-bottom: none;
-  border-radius: 5px 5px 0 0;
-  z-index: 0; /* .cover より背面 */
+  border-radius: 6px 6px 0 0;
+  z-index: 0; /* .cover より背面（覗く部分だけが見える） */
   pointer-events: none;
 }
-/* 1 枚目（表紙のすぐ上）: やや狭め・濃いめ */
-.book--stacked::after {
-  top: -0.28rem;
-  width: calc(100% - 0.9rem);
-  background: var(--sky-soft);          /* #bfe6f4 */
-  border-width: 1.5px;
-  border-color: var(--series-frame);    /* 濃色の小口ボーダー */
-}
-/* 2 枚目（さらに上）: もっと狭く・淡く（背景との境界はボーダーで確保） */
+/* 2 枚目（最上段・最も狭い）: 濃い青。全体が表紙の上に出るので必ず見える */
 .book--stacked::before {
-  top: -0.56rem;
-  width: calc(100% - 2.1rem);
-  background: #dcf0fa;
-  border-width: 1.5px;
-  border-color: var(--sky);             /* #4fc3e8 やや明るい青 */
+  top: -1.15rem;
+  width: calc(100% - 2.2rem);
+  background: var(--sky-deep);          /* #1f9bc4 濃い水色 */
+  border: 2px solid #14627e;            /* さらに濃い小口ボーダー */
+}
+/* 1 枚目（表紙のすぐ背後・最も幅広）: はっきりした水色 */
+.book--stacked::after {
+  top: -0.6rem;
+  width: calc(100% - 0.7rem);
+  background: var(--sky);               /* #4fc3e8 */
+  border: 2px solid var(--sky-deep);    /* 濃色の小口ボーダー */
 }
 
 /* 冊数バッジ: 出版社/シリーズ名の帯（プレースホルダー下辺）に重ならないよう
