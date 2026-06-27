@@ -68,7 +68,8 @@ function buildShelfItems(books) {
       }
       g.books.push(b);
     } else {
-      items.push({ type: 'single', book: b });
+      // 単独レコード。hasPart 由来の ISBN が複数 = 多巻もの（巻数 = ISBN 数）。
+      items.push({ type: 'single', book: b, volumes: (b.isbn && b.isbn.length) || 0 });
     }
   }
 
@@ -81,17 +82,39 @@ function buildShelfItems(books) {
     g.maxOwner = g.rep.ownerCount;
   }
 
-  // 本棚の並び順: 代表の ownerCount 降順、同値は ncid 昇順（build と同じ決定規則）
+  // 並び替えキー（所蔵館数降順、同値は ncid 昇順 = build と同じ決定規則）
   const ownerOf = (it) => it.type === 'series' ? it.maxOwner : it.book.ownerCount;
   const ncidOf = (it) => it.type === 'series' ? it.rep.ncid : it.book.ncid;
-  items.sort((a, b) => {
+  const byHoldings = (a, b) => {
     const d = ownerOf(b) - ownerOf(a);
     if (d) return d;
     const na = ncidOf(a), nb = ncidOf(b);
     return na < nb ? -1 : na > nb ? 1 : 0;
-  });
+  };
 
-  return items;
+  // 「シリーズ的」= シリーズ束（1冊のみも含む） or 多巻単独（ISBN が複数）。
+  // 単独単巻と分け、それぞれ所蔵館数順に整列したうえで 単独5 : シリーズ的1 で混ぜる。
+  const seriesBucket = items.filter(isSeriesLike).sort(byHoldings);
+  const soloBucket = items.filter(it => !isSeriesLike(it)).sort(byHoldings);
+  return interleave(soloBucket, seriesBucket, 5, 1);
+}
+
+/* シリーズ的か = シリーズ束 or 多巻単独（複数巻 = ISBN 複数）。
+ * 枠・冊数表示の対象、かつ 5:1 混在の「1」側バケットの判定に使う。 */
+function isSeriesLike(it) {
+  return it.type === 'series' || (it.type === 'single' && it.volumes > 1);
+}
+
+/* many を manyN 個、few を fewN 個ずつ交互に取り出して 1 本の配列にする。
+ * 片方が尽きたら、残りはもう片方をそのまま流し込む（= 末尾に偏る）。 */
+function interleave(many, few, manyN, fewN) {
+  const out = [];
+  let i = 0, j = 0;
+  while (i < many.length || j < few.length) {
+    for (let k = 0; k < manyN && i < many.length; k++) out.push(many[i++]);
+    for (let k = 0; k < fewN && j < few.length; k++) out.push(few[j++]);
+  }
+  return out;
 }
 
 /* ---------- 描画 ---------- */
@@ -115,19 +138,21 @@ function coverHtml(book, label) {
 function itemHtml(item, idx) {
   const isSeries = item.type === 'series';
   const book = isSeries ? item.rep : item.book;
-  const count = isSeries ? item.books.length : 1;
-  const stacked = isSeries && count > 1;
+  // 冊数: シリーズ束 = メンバー数、多巻単独 = 巻数（ISBN 数）
+  const count = isSeries ? item.books.length : (item.volumes || 1);
+  const seriesLike = isSeriesLike(item); // 枠・冊数表示の対象
+  const stacked = count > 1;             // 紙束の影は 2 冊以上のみ（1 冊シリーズには付けない）
   const sName = isSeries ? seriesName(item.rep) : '';
 
   const classes = ['book'];
-  if (isSeries) classes.push('book--series');
+  if (seriesLike) classes.push('book--series');
   if (stacked) classes.push('book--stacked');
 
   // プレースホルダー下辺: シリーズならシリーズ名、単独なら出版社
   const phLabel = isSeries ? sName : publisherText(book);
 
   let cover = coverHtml(book, phLabel);
-  if (stacked) {
+  if (seriesLike) {
     cover = cover.replace('</div>', `<span class="cover__count">${count}冊</span></div>`);
   }
 
@@ -168,6 +193,8 @@ function tooltipHtml(item) {
   rows.push(['所蔵館数', `${book.ownerCount}`]);
   if (isSeries) {
     rows.push(['シリーズ', `${seriesName(item.rep)}（${item.books.length}冊）`]);
+  } else if (item.volumes > 1) {
+    rows.push(['巻数', `${item.volumes}冊（多巻もの）`]);
   } else if (book.series && book.series.length) {
     rows.push(['シリーズ', book.series[0].title]);
   }
@@ -222,6 +249,8 @@ function overlayHtml(item) {
       <div class="ov__badge">シリーズ：${escapeHtml(seriesName(item.rep))}（${item.books.length}冊）</div>
       <p class="ov__note">所蔵館数が最も多い1冊を代表表示しています。</p>
       <ul class="ov__series-list">${list}</ul>`;
+  } else if (item.volumes > 1) {
+    seriesBlock = `<div class="ov__badge">多巻もの：全${item.volumes}冊</div>`;
   } else if (book.series && book.series.length) {
     seriesBlock = `<div class="ov__badge">${escapeHtml(book.series[0].title)}</div>`;
   }
@@ -306,10 +335,10 @@ async function init() {
     shelfItems = buildShelfItems(books);
     renderShelf();
 
-    const seriesCount = shelfItems.filter(it => it.type === 'series').length;
+    const seriesCount = shelfItems.filter(isSeriesLike).length;
     const total = (meta && meta.total) || books.length;
     els.stats.textContent =
-      `全 ${total.toLocaleString()} 件（${shelfItems.length.toLocaleString()} の棚／うちシリーズ ${seriesCount.toLocaleString()} 件）を所蔵館数の多い順に表示。`;
+      `全 ${total.toLocaleString()} 件（${shelfItems.length.toLocaleString()} の棚／うちシリーズ・多巻 ${seriesCount.toLocaleString()} 件）を所蔵館数順に、単独5:シリーズ1 の割合で配置。`;
   } catch (err) {
     els.shelf.setAttribute('aria-busy', 'false');
     els.shelf.innerHTML =
