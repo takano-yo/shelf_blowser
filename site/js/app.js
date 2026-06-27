@@ -219,16 +219,21 @@ function renderShelf() {
 // 取れないため、ウィンドウ幅から列数を算出して明示列に固定し、その境目に棚板を敷く。
 let shelfCols = 0;
 
+// 1 行に最低限並べる冊数。モバイル等で本来 2 冊以下になる幅では、本を縮めて
+// この冊数まで列を増やす（閲覧性確保）。3 冊以上並ぶ幅ではデフォルトサイズのまま。
+const MIN_COLUMNS = 3;
+
 // auto-fill 相当の列数を算出: floor((幅 + 列ギャップ) / (最小列幅 + 列ギャップ))。
+// ただし下限は MIN_COLUMNS（本来 2 冊以下になる幅でのみ列を増やして本を縮める）。
 function computeShelfColumns() {
   const width = els.shelf.clientWidth;
-  if (!width) return shelfCols || 1;
+  if (!width) return shelfCols || MIN_COLUMNS;
   const root = getComputedStyle(document.documentElement);
   const rootFont = parseFloat(root.fontSize) || 16;
   const bookWRem = parseFloat(root.getPropertyValue('--book-w')) || 9.5;
   const minW = bookWRem * rootFont;
   const colGap = parseFloat(getComputedStyle(els.shelf).columnGap) || 0;
-  return Math.max(1, Math.floor((width + colGap) / (minW + colGap)));
+  return Math.max(MIN_COLUMNS, Math.floor((width + colGap) / (minW + colGap)));
 }
 
 // N 枚ごと（＝各段の末尾）に、全幅のグリッド行となる棚板を挿入する。
