@@ -142,6 +142,7 @@ a { color: var(--sky-deep); }
 
 /* ===== 1冊（カード） ===== */
 .book {
+  position: relative; /* 紙束（擬似要素）の配置基準 */
   display: flex;
   flex-direction: column;
   cursor: pointer;
@@ -154,6 +155,7 @@ a { color: var(--sky-deep); }
 /* 表紙の枠（書影とプレースホルダー共通） */
 .cover {
   position: relative;
+  z-index: 1; /* 背後の紙束（擬似要素）より前面 */
   aspect-ratio: var(--cover-ratio);
   width: 100%;
   border-radius: var(--radius);
@@ -220,28 +222,51 @@ a { color: var(--sky-deep); }
   border: 2px solid var(--series-frame);
 }
 
-/* シリーズで複数冊 = 背後に紙（本）が連なる影（]]]] のイメージ） */
-.book--stacked .cover {
-  box-shadow:
-    2px -2px 0 #ffffff,
-    3px -3px 0 var(--sky-soft),
-    5px -5px 0 #ffffff,
-    6px -6px 0 var(--sky-soft),
-    8px -8px 0 #ffffff,
-    9px -9px 0 var(--series-frame),
-    var(--shadow);
+/* 複数冊（シリーズ束 2 冊以上／多巻もの）= 表紙の上辺にだけ紙束をはっきり覗かせる。
+ * 上へ向かうほど幅を狭くした台形状に重ね、各層を濃い青で塗り小口を濃色ボーダーで
+ * 縁取る。表紙本体(.cover)は overflow:hidden のため束は親 .book に擬似要素で描く。
+ * 書影サイズは .cover のままなので、束の有無でカードの大きさは変わらない。
+ * 一目で「2冊以上のシリーズ/多巻」と分かるよう、十分に大きく濃く出す。 */
+/* content-visibility:auto は paint containment を常時伴い、.book の枠外へ出る
+ * 擬似要素（上辺の紙束）をクリップしてしまう。紙束のあるカードだけ解除する。 */
+.book--stacked {
+  content-visibility: visible;
+  contain: none;
 }
-.book--stacked { margin-top: 0.6rem; margin-right: 0.6rem; }
-.book--stacked:hover .cover,
-.book--stacked:focus-visible .cover {
-  transform: translateY(-3px);
+.book--stacked::before,
+.book--stacked::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 0.95rem;
+  border-style: solid;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  z-index: 0; /* .cover より背面（覗く部分だけが見える） */
+  pointer-events: none;
+}
+/* 2 枚目（最上段・最も狭い）: 濃い青。全体が表紙の上に出るので必ず見える */
+.book--stacked::before {
+  top: -1.15rem;
+  width: calc(100% - 2.2rem);
+  background: var(--sky-deep);          /* #1f9bc4 濃い水色 */
+  border: 2px solid #14627e;            /* さらに濃い小口ボーダー */
+}
+/* 1 枚目（表紙のすぐ背後・最も幅広）: はっきりした水色 */
+.book--stacked::after {
+  top: -0.6rem;
+  width: calc(100% - 0.7rem);
+  background: var(--sky);               /* #4fc3e8 */
+  border: 2px solid var(--sky-deep);    /* 濃色の小口ボーダー */
 }
 
-/* シリーズ冊数バッジ */
+/* 冊数バッジ: 出版社/シリーズ名の帯（プレースホルダー下辺）に重ならないよう
+ * 帯の上へ逃がす。書影ありの場合も同じ位置（下部右）に統一する。 */
 .cover__count {
   position: absolute;
-  left: 0.45rem;
-  bottom: 0.45rem;
+  right: 0.5rem;
+  bottom: 2.35rem;
   padding: 0.1rem 0.45rem;
   font-size: 0.72rem;
   font-weight: 700;
