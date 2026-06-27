@@ -55,6 +55,14 @@ function authorText(book) {
   return '著者不明';
 }
 
+// 表紙下メタの著者欄用。寄与情報（著・編・校注 など）込みの CiNii Books 生データ
+// （creatorRaw）をそのまま表示する。生データが無ければ整形済みの著者名にフォールバック。
+function authorRawText(book) {
+  if (book.creatorRaw) return book.creatorRaw;
+  if (book.creators && book.creators.length) return book.creators.join('、');
+  return '著者不明';
+}
+
 function publisherText(book) {
   return (book.publishers && book.publishers.length) ? book.publishers.join('、') : '';
 }
@@ -200,7 +208,7 @@ function itemHtml(item, idx) {
       ${cover}
       <div class="meta">
         <div class="meta__title">${escapeHtml(book.title)}</div>
-        <div class="meta__author">${escapeHtml(authorText(book))}</div>
+        <div class="meta__author">${escapeHtml(authorRawText(book))}</div>
         ${sub}
         ${yearText ? `<div class="meta__sub meta__year">${yearText}</div>` : ''}
       </div>
