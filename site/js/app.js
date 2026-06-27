@@ -329,16 +329,21 @@ function bindEvents() {
     if (card) { e.preventDefault(); openOverlay(shelfItems[+card.dataset.idx]); }
   });
 
-  // ホバー詳細（表紙と交代して同サイズで表示）
+  // ホバー詳細（表紙と交代して同サイズで表示）。
+  // 検出は表紙画像（.cover）の範囲のみ。表紙下の書誌テキストにホバーしても出さない。
   els.shelf.addEventListener('mouseover', (e) => {
-    const card = e.target.closest('.book');
+    const cover = e.target.closest('.cover');
+    if (!cover) return;
+    const card = cover.closest('.book');
     if (card) showCoverDetail(shelfItems[+card.dataset.idx], card);
   });
   els.shelf.addEventListener('mouseout', (e) => {
-    const card = e.target.closest('.book');
+    const cover = e.target.closest('.cover');
+    if (!cover) return;
     const to = e.relatedTarget;
-    // 別カードへ移ったときは mouseover 側で貼り替わるので、棚外へ出たときだけ消す
-    if (card && (!to || !to.closest || !to.closest('.book'))) hideCoverDetail();
+    // 表紙の外（書誌テキストや棚の余白、別の表紙）へ出たときに消す。
+    // 別の表紙へ直接移った場合は mouseover 側で貼り替わる。
+    if (!to || !to.closest || !to.closest('.cover')) hideCoverDetail();
   });
 
   // オーバーレイを閉じる
