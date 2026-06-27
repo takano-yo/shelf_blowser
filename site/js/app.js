@@ -283,7 +283,12 @@ function overlayHtml(item) {
     seriesBlock = `<div class="ov__badge">${escapeHtml(book.series[0].title)}</div>`;
   }
 
+  const coverImg = book.coverUrl
+    ? `<img class="ov__cover" src="${escapeHtml(book.coverUrl)}" alt="${escapeHtml(book.title)} の表紙">`
+    : '';
+
   return `
+    ${coverImg}
     <h2 class="ov__title" id="ov-title">${escapeHtml(book.title)}</h2>
     <p class="ov__author">${escapeHtml(authorText(book))}</p>
     ${seriesBlock}
