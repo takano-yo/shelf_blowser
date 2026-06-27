@@ -287,7 +287,7 @@ a { color: var(--sky-deep); }
   background-image:
     linear-gradient(rgba(31, 155, 196, 0.30), rgba(31, 155, 196, 0.30)),  /* 3本目（最も淡い・最上・0.7倍） */
     linear-gradient(rgba(31, 155, 196, 0.55), rgba(31, 155, 196, 0.55)),  /* 2本目（中・0.8倍） */
-    linear-gradient(rgba(31, 155, 196, 0.90), rgba(31, 155, 196, 0.90));  /* 1本目（最も濃い・表紙側・0.9倍） */
+    linear-gradient(rgba(31, 155, 196, 0.90), rgba(31, 155, 196, 0.80));  /* 1本目（最も濃い・表紙側・0.9倍） */
   background-repeat: no-repeat;
   background-size: 70% 2px, 80% 2px, 90% 2px;
   /* top からの縦位置: 3本目=0 / 2本目=5px(2+3) / 1本目=10px(4+6)。下端の表紙との隙間も3px。 */
