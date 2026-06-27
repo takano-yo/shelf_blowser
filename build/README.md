@@ -216,7 +216,7 @@
   "sourceFile": "source/日本近代文学.json",
   "total": 5212,
   "withIsbn": 2794,
-  "withCover": 0,
+  "withCover": 221,
   "sort": "ownerCount desc, ncid asc"
 }
 ```
@@ -242,8 +242,9 @@
 
 ```
 build/
-├── README.md          # 本書（要件定義）
-└── (実装予定) build.py  # source/*.json → site/data/*.json
+├── README.md   # 本書（要件定義 ＋ 実行結果）
+└── build.py    # 実装済み。source/*.json → site/data/*.json
+                # 表紙取得（段階3）も enrich_covers() として実装済み
 ```
 
 実行イメージ:
@@ -285,6 +286,37 @@ python build/build.py --source source/日本近代文学.json \
 6. ISBN から `urn:` 接頭辞が除かれ、ISSN が混入していない。
 7. 同一入力で 2 回実行して**バイト一致**する（冪等）。
 8. `--covers` 実行時、キャッシュにより 2 回目はネットワーク再取得が起きない。
+
+→ 全件（5,212 件）で上記 1〜8 をすべて確認済み。`site/data/books.json` を生成済み。
+
+---
+
+## 実行結果（全件・実測 2026-06-27）
+
+`python build/build.py --covers` を `source/日本近代文学.json` 全件に対して実行した結果。
+
+| 指標 | 値 |
+|---|---:|
+| レコード総数 | 5,212 |
+| ISBN 保有 | 2,794（53.6%） |
+| **書影取得（coverUrl 非 null）** | **221（全体の 4.2% / ISBN 保有中 7.9%）** |
+| プレースホルダー（coverUrl = null） | 4,991（95.8%） |
+| 出力サイズ（`books.json`） | 約 1.9 MB |
+| OpenBD キャッシュ件数（代表 ISBN） | 2,746 |
+| 実行時間（初回・取得あり） | 約 27 秒 |
+| 実行時間（2 回目・全キャッシュ命中） | 約 0.5 秒（ネットワーク再取得なし） |
+
+- **書影 URL は OpenBD の `https://cover.openbd.jp/<ISBN13>.jpg` 形式**で、
+  サンプルは HTTP 200・`image/jpeg` を返すことを確認済み。
+- **カバー率が低い**（4.2%）のは想定どおり。本データは複刻・全集・古い学術書が
+  中心で書影が少なく、`site` も**多くがプレースホルダーになる前提**で設計している。
+  上位 100 件（主要書）でも書影ありは 2 件のみ。`site` のプレースホルダー表示が
+  実質的な主表示になる。
+- `coverUrl: null` でも `site` は `title`/`creators`/`publishers`/`series` から
+  プレースホルダーを描画できるため、表示に支障はない。
+
+> 生データキャッシュ（`.cache/openbd/`）は Git 管理外。成果物 `site/data/books.json`・
+> `site/data/meta.json` のみコミットする。
 
 ---
 
