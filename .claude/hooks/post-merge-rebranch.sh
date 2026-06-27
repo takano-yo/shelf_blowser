@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# post-merge-rebranch.sh — Stop フックスクリプト
+# post-merge-rebranch.sh — UserPromptSubmit フックスクリプト
 #
 # 目的:
 #   PR がクラウドの main にマージされた際、active な作業ブランチが 1 つだけなら、
@@ -8,18 +8,26 @@
 #   → 一つのチャットで開発している間、マージのたびに自動で新規ブランチへ切り替え、
 #     それまでのブランチを片付ける（new-branch 相当の git 操作を実行する）。
 #
+# なぜ UserPromptSubmit か（Stop ではなく）:
+#   Stop はユーザーへの応答を「返し終えた後」に発火するため、
+#   「マージ → 次の指示でファイル変更 → Stop でリブランチ」という順序になり、
+#   変更が古い（マージ済み）ブランチに乗ってしまう時間差があった。
+#   UserPromptSubmit は次のプロンプトを「処理する前」に発火するので、
+#   ファイル変更指示が来ても先に新ブランチへ移ってから実行され、この差が閉じる。
+#
 # 安全方針（迷ったら何もしない / fail-open）:
 #   - main / master 上、detached HEAD では何もしない。
 #   - active（main 以外のローカル）ブランチが「1 つだけ」でなければ何もしない。
 #     複数ある場合は誤って消さないよう、ユーザーに委ねる。
 #   - 現ブランチが origin/main にマージ済み（マージコミット方式）でなければ何もしない。
+#   - 未コミットの変更がある場合は自動切替で巻き込まないよう、切替せず警告して終わる。
 #   - いずれの git 操作も失敗したら、その場で安全に終了する（ブロックしない）。
 #
 # 制約:
 #   - マージ済み判定は merge-base による「マージコミット方式」を前提とする。
 #     squash / rebase マージはこの方法では検知できない（README 参照）。
 
-# fail-open: エラーでフックがセッションを妨げないよう、常に 0 で抜ける。
+# fail-open: エラーでフックがプロンプト処理を妨げないよう、常に 0 で抜ける。
 set -u
 
 # --- リポジトリルートへ ---
@@ -49,8 +57,15 @@ git fetch origin main --quiet 2>/dev/null || exit 0
 # --- 現ブランチが origin/main にマージ済みか（マージコミット方式を前提） ---
 git merge-base --is-ancestor HEAD origin/main 2>/dev/null || exit 0
 # main と同一（= 新規に切っただけで差分が無い）ブランチは「マージ済み」扱いしない。
-# これが無いと、作りたてのブランチで毎ターン誤発火してしまう。
+# これが無いと、作りたてのブランチで毎回誤発火してしまう。
 [ "$(git rev-parse HEAD 2>/dev/null)" != "$(git rev-parse origin/main 2>/dev/null)" ] || exit 0
+
+# --- 未コミットの変更があるときは自動切替で巻き込まない（安全側） ---
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  printf '{"systemMessage":"post-merge-rebranch: %s はマージ済みですが、未コミットの変更があるため自動リブランチを見送りました。変更を commit/stash 後に手動で main から切り直してください。"}\n' \
+    "$current"
+  exit 0
+fi
 
 # --- 新しいブランチ名（自動生成。後でユーザーがリネーム可能） ---
 new_branch="claude/work-$(date +%Y%m%d-%H%M%S)"
@@ -63,7 +78,7 @@ git switch -c "$new_branch" origin/main --quiet 2>/dev/null || exit 0
 git branch -d "$current" --quiet 2>/dev/null || true
 
 # --- ユーザー/Claude へ通知（systemMessage はそのまま表示される） ---
-printf '{"systemMessage":"post-merge-rebranch: マージ済みブランチ %s を削除し、最新の main から %s を作成して移行しました。"}\n' \
+printf '{"systemMessage":"post-merge-rebranch: マージ済みブランチ %s を削除し、最新の main から %s を作成して移行しました（プロンプト処理前）。"}\n' \
   "$current" "$new_branch"
 
 exit 0
