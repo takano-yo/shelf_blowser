@@ -36,13 +36,9 @@ body {
 a { color: var(--sky-deep); }
 
 /* ===== ヘッダー ===== */
+/* タイトル/説明はページ最上部の通常要素。スクロールに追随せず流れて消える。 */
 .site-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--line);
+  background: var(--bg);
 }
 
 .site-header__bar {
@@ -78,14 +74,28 @@ a { color: var(--sky-deep); }
   color: var(--muted);
 }
 
+/* 検索バー: スクロールしても最上部に追随する唯一の要素。
+ * （タイトル/説明のヘッダはこの上にあり、スクロールで流れて消える） */
+.searchbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+.searchbar__inner {
+  max-width: 88rem;
+  margin: 0 auto;
+  padding: 0.6rem 1.25rem;
+}
+
 /* 検索窓（ダミー） */
 .search {
   display: flex;
   align-items: stretch;
-  flex: 1 1 16rem;
-  min-width: 12rem;
-  max-width: 30rem;
-  margin-left: auto;
+  width: 100%;
+  max-width: 40rem;
 }
 
 .search__input {
