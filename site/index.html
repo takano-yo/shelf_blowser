@@ -8,13 +8,20 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+  <!-- ページ最上部のヘッダ（タイトル/説明）。スクロールには追随せず流れて消える。 -->
   <header class="site-header">
     <div class="site-header__bar">
       <div class="site-header__brand">
         <h1 class="site-header__title">shelf_blowser</h1>
         <p class="site-header__subtitle">日本近代文学の本棚</p>
       </div>
+    </div>
+    <p class="site-header__note" id="shelf-stats" aria-live="polite"></p>
+  </header>
 
+  <!-- 検索バーのみスクロールに追随して最上部に残る -->
+  <div class="searchbar">
+    <div class="searchbar__inner">
       <!-- 検索窓（現フェーズはダミー） -->
       <form class="search" id="search-form" role="search" aria-label="書誌検索（準備中）">
         <input
@@ -27,8 +34,7 @@
         <button class="search__button" type="submit" aria-label="検索">検索</button>
       </form>
     </div>
-    <p class="site-header__note" id="shelf-stats" aria-live="polite"></p>
-  </header>
+  </div>
 
   <main class="shelf-wrap">
     <div class="shelf" id="shelf" aria-busy="true">
