@@ -186,7 +186,10 @@ a { color: var(--sky-deep); }
   overflow: hidden;
   border-radius: inherit;
   opacity: 0;
-  transition: opacity 0.16s ease;
+  /* 出だしの速い ease-out かつ短めにして、ホバーへの反応を機敏に見せる。
+   * will-change で合成レイヤーを事前確保し、初回フェードのカクつきを抑える。 */
+  transition: opacity 0.1s ease-out;
+  will-change: opacity;
 }
 .cover-detail.is-on { opacity: 1; }
 .cover-detail__title {
