@@ -213,6 +213,55 @@ function renderShelf() {
   els.shelf.setAttribute('aria-busy', 'false');
 }
 
+/* ---------- 棚板（各段の下のデザイン要素） ---------- */
+
+// 現在の列数。auto-fill では列数が動的で「どこで段が変わるか」が CSS だけでは
+// 取れないため、ウィンドウ幅から列数を算出して明示列に固定し、その境目に棚板を敷く。
+let shelfCols = 0;
+
+// auto-fill 相当の列数を算出: floor((幅 + 列ギャップ) / (最小列幅 + 列ギャップ))。
+function computeShelfColumns() {
+  const width = els.shelf.clientWidth;
+  if (!width) return shelfCols || 1;
+  const root = getComputedStyle(document.documentElement);
+  const rootFont = parseFloat(root.fontSize) || 16;
+  const bookWRem = parseFloat(root.getPropertyValue('--book-w')) || 9.5;
+  const minW = bookWRem * rootFont;
+  const colGap = parseFloat(getComputedStyle(els.shelf).columnGap) || 0;
+  return Math.max(1, Math.floor((width + colGap) / (minW + colGap)));
+}
+
+// N 枚ごと（＝各段の末尾）に、全幅のグリッド行となる棚板を挿入する。
+function layoutShelfBoards(cols) {
+  els.shelf.querySelectorAll('.shelf-board').forEach(b => b.remove());
+  const cards = els.shelf.querySelectorAll('.book');
+  if (!cards.length) return;
+  // 走査中の挿入で位置がずれないよう、挿入基準（次段の先頭カード）を先に集める。
+  const refs = [];
+  for (let i = cols; i < cards.length; i += cols) refs.push(cards[i]);
+  for (const ref of refs) ref.before(makeShelfBoard());
+  // 最終段の下にも一枚敷く。
+  els.shelf.appendChild(makeShelfBoard());
+}
+
+function makeShelfBoard() {
+  const board = document.createElement('div');
+  board.className = 'shelf-board';
+  board.setAttribute('aria-hidden', 'true');
+  return board;
+}
+
+// 列数を明示列として適用し、列数が変わったときだけ棚板を再構築する。
+function applyShelfLayout(force) {
+  if (!els.shelf.querySelector('.book')) return; // 本が無い（読み込み失敗等）なら何もしない
+  const cols = computeShelfColumns();
+  els.shelf.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+  if (force || cols !== shelfCols) {
+    shelfCols = cols;
+    layoutShelfBoards(cols);
+  }
+}
+
 /* ---------- ホバー詳細（表紙と交代して同サイズで表示） ---------- */
 
 function coverDetailHtml(item) {
@@ -359,6 +408,13 @@ function bindEvents() {
     e.preventDefault();
     els.stats.textContent = '検索機能は準備中です（現在は全件を所蔵館数の多い順に表示しています）。';
   });
+
+  // ウィンドウ幅変化で列数が変わったら棚板を敷き直す（リサイズ確定後にだけ実行）。
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => applyShelfLayout(false), 120);
+  });
 }
 
 /* ---------- 起動 ---------- */
@@ -373,6 +429,7 @@ async function init() {
 
     shelfItems = buildShelfItems(books);
     renderShelf();
+    applyShelfLayout(true);
 
     const seriesCount = shelfItems.filter(isSeriesLike).length;
     const total = (meta && meta.total) || books.length;
