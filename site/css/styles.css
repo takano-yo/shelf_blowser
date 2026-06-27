@@ -167,9 +167,45 @@ a { color: var(--sky-deep); }
 }
 .book:hover .cover,
 .book:focus-visible .cover {
-  transform: translateY(-3px);
   box-shadow: 0 8px 18px rgba(31, 155, 196, 0.22);
 }
+
+/* ホバーで表紙と交代する詳細レイヤー（表紙と同サイズ・薄い白背景） */
+.cover-detail {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.75rem 0.7rem;
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--text);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  overflow: hidden;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.cover-detail.is-on { opacity: 1; }
+.cover-detail__title {
+  font-weight: 700;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cover-detail dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.12rem 0.45rem;
+}
+.cover-detail dt { color: var(--muted); white-space: nowrap; }
+.cover-detail dd { margin: 0; overflow: hidden; text-overflow: ellipsis; }
 
 .cover__img {
   width: 100%;
@@ -227,38 +263,32 @@ a { color: var(--sky-deep); }
  * 縁取る。表紙本体(.cover)は overflow:hidden のため束は親 .book に擬似要素で描く。
  * 書影サイズは .cover のままなので、束の有無でカードの大きさは変わらない。
  * 一目で「2冊以上のシリーズ/多巻」と分かるよう、十分に大きく濃く出す。 */
-/* content-visibility:auto は paint containment を常時伴い、.book の枠外へ出る
- * 擬似要素（上辺の紙束）をクリップしてしまう。紙束のあるカードだけ解除する。 */
+/* content-visibility:auto は paint containment を常時伴い、.book の枠外（上）へ
+ * 出る擬似要素をクリップしてしまう。紙束のあるカードだけ解除する。 */
 .book--stacked {
   content-visibility: visible;
   contain: none;
 }
-.book--stacked::before,
-.book--stacked::after {
+/* 複数冊（シリーズ束2冊以上／多巻）= 表紙のすぐ上に水平線を 3 本。
+ * 色は表紙本体の枠（--series-frame = rgb(31,155,196)）と同じで、上へ向かうほど
+ * 淡く（濃淡のみ変化）する。表示幅は表紙と同じ（左右 0）でカード幅は不変。 */
+.book--stacked::before {
   content: "";
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  height: 0.95rem;
-  border-style: solid;
-  border-bottom: none;
-  border-radius: 6px 6px 0 0;
-  z-index: 0; /* .cover より背面（覗く部分だけが見える） */
+  left: 0;
+  right: 0;
+  bottom: 100%;          /* 表紙の直上に配置 */
+  height: 0.72rem;
   pointer-events: none;
-}
-/* 2 枚目（最上段・最も狭い）: 濃い青。全体が表紙の上に出るので必ず見える */
-.book--stacked::before {
-  top: -1.15rem;
-  width: calc(100% - 2.2rem);
-  background: var(--sky-deep);          /* #1f9bc4 濃い水色 */
-  border: 2px solid #14627e;            /* さらに濃い小口ボーダー */
-}
-/* 1 枚目（表紙のすぐ背後・最も幅広）: はっきりした水色 */
-.book--stacked::after {
-  top: -0.6rem;
-  width: calc(100% - 0.7rem);
-  background: var(--sky);               /* #4fc3e8 */
-  border: 2px solid var(--sky-deep);    /* 濃色の小口ボーダー */
+  background: linear-gradient(
+    to top,
+    rgba(31, 155, 196, 0.90) 0,    rgba(31, 155, 196, 0.90) 2px,  /* 1本目（最も濃い・表紙側） */
+    transparent              2px,  transparent              5px,
+    rgba(31, 155, 196, 0.55) 5px,  rgba(31, 155, 196, 0.55) 7px,  /* 2本目 */
+    transparent              7px,  transparent              10px,
+    rgba(31, 155, 196, 0.30) 10px, rgba(31, 155, 196, 0.30) 12px, /* 3本目（最も淡い・最上） */
+    transparent              12px
+  );
 }
 
 /* 冊数バッジ: 出版社/シリーズ名の帯（プレースホルダー下辺）に重ならないよう
@@ -306,26 +336,6 @@ a { color: var(--sky-deep); }
 }
 .meta__sub--series { color: var(--sky-deep); font-weight: 600; }
 .meta__year { color: var(--muted); }
-
-/* ===== ホバー詳細ツールチップ ===== */
-.tooltip {
-  position: fixed;
-  z-index: 40;
-  max-width: 18rem;
-  padding: 0.7rem 0.85rem;
-  font-size: 0.8rem;
-  line-height: 1.45;
-  background: #fff;
-  color: var(--text);
-  border: 1px solid var(--sky);
-  border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(22, 50, 63, 0.18);
-  pointer-events: none;
-}
-.tooltip dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 0.5rem; }
-.tooltip dt { color: var(--muted); white-space: nowrap; }
-.tooltip dd { margin: 0; }
-.tooltip__title { font-weight: 700; margin-bottom: 0.35rem; }
 
 /* ===== 詳細オーバーレイ ===== */
 .overlay { position: fixed; inset: 0; z-index: 50; }

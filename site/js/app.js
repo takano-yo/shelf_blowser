@@ -25,11 +25,15 @@ const els = {
   shelf: document.getElementById('shelf'),
   loading: document.getElementById('shelf-loading'),
   stats: document.getElementById('shelf-stats'),
-  tooltip: document.getElementById('tooltip'),
   overlay: document.getElementById('overlay'),
   overlayBody: document.getElementById('overlay-body'),
   searchForm: document.getElementById('search-form'),
 };
+
+// ホバー時に表紙と交代して詳細を表示する使い回しレイヤー（1個を貼り替える）。
+const coverDetail = document.createElement('div');
+coverDetail.className = 'cover-detail';
+coverDetail.setAttribute('aria-hidden', 'true');
 
 let shelfItems = []; // 描画単位（単独本 or シリーズ束）
 
@@ -209,9 +213,9 @@ function renderShelf() {
   els.shelf.setAttribute('aria-busy', 'false');
 }
 
-/* ---------- ホバー詳細ツールチップ ---------- */
+/* ---------- ホバー詳細（表紙と交代して同サイズで表示） ---------- */
 
-function tooltipHtml(item) {
+function coverDetailHtml(item) {
   const isSeries = item.type === 'series';
   const book = isSeries ? item.rep : item.book;
   const rows = [];
@@ -229,28 +233,24 @@ function tooltipHtml(item) {
   if (book.isbn && book.isbn.length) rows.push(['ISBN', book.isbn[0]]);
 
   const dl = rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join('');
-  return `<div class="tooltip__title">${escapeHtml(book.title)}</div><dl>${dl}</dl>`;
+  return `<div class="cover-detail__title">${escapeHtml(book.title)}</div><dl>${dl}</dl>`;
 }
 
-function showTooltip(item, x, y) {
-  els.tooltip.innerHTML = tooltipHtml(item);
-  els.tooltip.hidden = false;
-  positionTooltip(x, y);
+// 表紙(.cover)の上に inset:0 で重ね、フェードインで表紙画像と交代させる。
+function showCoverDetail(item, card) {
+  const cover = card.querySelector('.cover');
+  if (!cover) return;
+  // 同じカードに既に表示済みなら作り直さない（カード内の子要素跨ぎのちらつき防止）
+  if (coverDetail.parentNode === cover) return;
+  coverDetail.innerHTML = coverDetailHtml(item);
+  cover.appendChild(coverDetail);
+  // レイアウト確定後に next frame でクラス付与 → opacity 遷移
+  requestAnimationFrame(() => coverDetail.classList.add('is-on'));
 }
 
-function positionTooltip(x, y) {
-  const pad = 14;
-  const t = els.tooltip;
-  const w = t.offsetWidth, h = t.offsetHeight;
-  let left = x + pad, top = y + pad;
-  if (left + w > window.innerWidth - pad) left = x - w - pad;
-  if (top + h > window.innerHeight - pad) top = y - h - pad;
-  t.style.left = Math.max(pad, left) + 'px';
-  t.style.top = Math.max(pad, top) + 'px';
-}
-
-function hideTooltip() {
-  els.tooltip.hidden = true;
+function hideCoverDetail() {
+  coverDetail.classList.remove('is-on');
+  if (coverDetail.parentNode) coverDetail.parentNode.removeChild(coverDetail);
 }
 
 /* ---------- 詳細オーバーレイ ---------- */
@@ -294,7 +294,7 @@ function overlayHtml(item) {
 let lastFocused = null;
 
 function openOverlay(item) {
-  hideTooltip();
+  hideCoverDetail();
   els.overlayBody.innerHTML = overlayHtml(item);
   els.overlay.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -322,17 +322,16 @@ function bindEvents() {
     if (card) { e.preventDefault(); openOverlay(shelfItems[+card.dataset.idx]); }
   });
 
-  // ホバー詳細
+  // ホバー詳細（表紙と交代して同サイズで表示）
   els.shelf.addEventListener('mouseover', (e) => {
     const card = e.target.closest('.book');
-    if (card) showTooltip(shelfItems[+card.dataset.idx], e.clientX, e.clientY);
-  });
-  els.shelf.addEventListener('mousemove', (e) => {
-    if (!els.tooltip.hidden) positionTooltip(e.clientX, e.clientY);
+    if (card) showCoverDetail(shelfItems[+card.dataset.idx], card);
   });
   els.shelf.addEventListener('mouseout', (e) => {
+    const card = e.target.closest('.book');
     const to = e.relatedTarget;
-    if (!to || !to.closest || !to.closest('.book')) hideTooltip();
+    // 別カードへ移ったときは mouseover 側で貼り替わるので、棚外へ出たときだけ消す
+    if (card && (!to || !to.closest || !to.closest('.book'))) hideCoverDetail();
   });
 
   // オーバーレイを閉じる
