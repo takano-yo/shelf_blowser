@@ -466,6 +466,20 @@ a { color: var(--sky-deep); }
     border-top: 4px solid var(--sky);
     border-radius: 16px 16px 0 0;
     animation: slide-up 0.18s ease;
+    /* 下スワイプで閉じられることを示すドラッグハンドル分の余白 */
+    padding-top: 1.6rem;
+  }
+  /* ドラッグハンドル（つまみ）: 下スワイプで閉じられることを示唆 */
+  .overlay__panel::before {
+    content: "";
+    position: absolute;
+    top: 0.55rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 2.5rem;
+    height: 0.3rem;
+    border-radius: 999px;
+    background: var(--line);
   }
 }
 

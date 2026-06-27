@@ -368,13 +368,66 @@ function openOverlay(item) {
   els.overlay.hidden = false;
   document.body.style.overflow = 'hidden';
   lastFocused = document.activeElement;
-  els.overlay.querySelector('.overlay__panel').focus();
+  const panel = els.overlay.querySelector('.overlay__panel');
+  // 直前のスワイプで残ったインライン変形/スクロール位置をリセット。
+  panel.style.transition = '';
+  panel.style.transform = '';
+  panel.scrollTop = 0;
+  panel.focus();
 }
 
 function closeOverlay() {
   els.overlay.hidden = true;
   document.body.style.overflow = '';
+  const panel = els.overlay.querySelector('.overlay__panel');
+  panel.style.transition = '';
+  panel.style.transform = '';
   if (lastFocused && lastFocused.focus) lastFocused.focus();
+}
+
+// モバイルのボトムシートを下スワイプ（先頭までスクロール済みでの下方向ドラッグ）で
+// 閉じられるようにする。内容が途中までスクロールされている間は通常スクロールを優先。
+function bindSheetSwipe() {
+  const panel = els.overlay.querySelector('.overlay__panel');
+  if (!panel) return;
+  const DISMISS_PX = 90;          // この距離以上ドラッグで閉じる
+  const isSheet = () => window.matchMedia('(max-width: 600px)').matches;
+  let startY = 0, startScroll = 0, dragging = false;
+
+  panel.addEventListener('touchstart', (e) => {
+    if (els.overlay.hidden || !isSheet() || e.touches.length !== 1) return;
+    startY = e.touches[0].clientY;
+    startScroll = panel.scrollTop;
+    dragging = false;
+  }, { passive: true });
+
+  panel.addEventListener('touchmove', (e) => {
+    if (els.overlay.hidden || !isSheet() || e.touches.length !== 1) return;
+    const dy = e.touches[0].clientY - startY;
+    // 先頭まで戻っている状態での下方向ドラッグのときだけシートを動かす。
+    if (startScroll <= 0 && dy > 0) {
+      dragging = true;
+      panel.style.transition = 'none';
+      panel.style.transform = `translateY(${dy}px)`;
+      e.preventDefault(); // 内部スクロール/バウンスを抑止
+    }
+  }, { passive: false });
+
+  panel.addEventListener('touchend', (e) => {
+    if (!dragging) return;
+    dragging = false;
+    const dy = e.changedTouches[0].clientY - startY;
+    panel.style.transition = 'transform 0.18s ease';
+    if (dy > DISMISS_PX) {
+      // シートを下へ送り出してから閉じる。
+      panel.style.transform = 'translateY(100%)';
+      const done = () => { panel.removeEventListener('transitionend', done); closeOverlay(); };
+      panel.addEventListener('transitionend', done);
+    } else {
+      // しきい値未満は元位置へスナップバック。
+      panel.style.transform = 'translateY(0)';
+    }
+  });
 }
 
 /* ---------- イベント ---------- */
@@ -415,6 +468,8 @@ function bindEvents() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.overlay.hidden) closeOverlay();
   });
+  // モバイル: 下スワイプでボトムシートを閉じる
+  bindSheetSwipe();
 
   // 検索窓はダミー（送信しても何もしない）
   els.searchForm.addEventListener('submit', (e) => {
