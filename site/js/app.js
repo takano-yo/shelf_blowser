@@ -244,8 +244,10 @@ function showCoverDetail(item, card) {
   if (coverDetail.parentNode === cover) return;
   coverDetail.innerHTML = coverDetailHtml(item);
   cover.appendChild(coverDetail);
-  // レイアウト確定後に next frame でクラス付与 → opacity 遷移
-  requestAnimationFrame(() => coverDetail.classList.add('is-on'));
+  // 強制リフローで opacity:0 の初期状態を即確定させ、同じフレーム内で is-on を付与。
+  // requestAnimationFrame の 1 フレーム待ち（約16ms）を省きフェード開始のラグを削減する。
+  void coverDetail.offsetWidth;
+  coverDetail.classList.add('is-on');
 }
 
 function hideCoverDetail() {
