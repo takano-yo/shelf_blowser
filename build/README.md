@@ -270,6 +270,7 @@ python build/build.py --source source/日本近代文学.json \
 | `--covers` | OpenBD で表紙取得（段階 3）を有効化 | 無効（全件 `coverUrl: null`） |
 | `--cache DIR` | OpenBD キャッシュ先 | `.cache/openbd/` |
 | `--pretty` | 整形出力（デバッグ用） | 無効（最小サイズ） |
+| `--limit N` | 先頭 N 件のみ処理（動作テスト用） | 無効（全件） |
 | `--details DIR` | 詳細検索索引の生成（後回し） | 無効 |
 
 ---
