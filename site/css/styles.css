@@ -271,24 +271,27 @@ a { color: var(--sky-deep); }
 }
 /* 複数冊（シリーズ束2冊以上／多巻）= 表紙のすぐ上に水平線を 3 本。
  * 色は表紙本体の枠（--series-frame = rgb(31,155,196)）と同じで、上へ向かうほど
- * 淡く（濃淡のみ変化）する。表示幅は表紙と同じ（左右 0）でカード幅は不変。 */
+ * 淡く（濃淡のみ変化）、かつ短くする（1本目=表紙幅の0.9倍／2本目=0.8倍／3本目=0.7倍）。
+ * 線は水平中央寄せで、表紙↔1本目・各線間の隙間はすべて等幅（3px）。
+ * 疑似要素自体は表紙と同じ幅（左右 0）なのでカードの表示幅は不変。
+ * 3本を個別の背景レイヤーにし、background-size(幅%) と background-position(中央＋縦位置)
+ * で線ごとに幅と位置を変える（単一グラデーションでは線幅を変えられないため）。 */
 .book--stacked::before {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
   bottom: 100%;          /* 表紙の直上に配置 */
-  height: 0.72rem;
+  height: 15px;          /* 隙間3px×3 + 線2px×3 = 15px */
   pointer-events: none;
-  background: linear-gradient(
-    to top,
-    rgba(31, 155, 196, 0.90) 0,    rgba(31, 155, 196, 0.90) 2px,  /* 1本目（最も濃い・表紙側） */
-    transparent              2px,  transparent              5px,
-    rgba(31, 155, 196, 0.55) 5px,  rgba(31, 155, 196, 0.55) 7px,  /* 2本目 */
-    transparent              7px,  transparent              10px,
-    rgba(31, 155, 196, 0.30) 10px, rgba(31, 155, 196, 0.30) 12px, /* 3本目（最も淡い・最上） */
-    transparent              12px
-  );
+  background-image:
+    linear-gradient(rgba(31, 155, 196, 0.30), rgba(31, 155, 196, 0.30)),  /* 3本目（最も淡い・最上・0.7倍） */
+    linear-gradient(rgba(31, 155, 196, 0.55), rgba(31, 155, 196, 0.55)),  /* 2本目（中・0.8倍） */
+    linear-gradient(rgba(31, 155, 196, 0.90), rgba(31, 155, 196, 0.90));  /* 1本目（最も濃い・表紙側・0.9倍） */
+  background-repeat: no-repeat;
+  background-size: 70% 2px, 80% 2px, 90% 2px;
+  /* top からの縦位置: 3本目=0 / 2本目=5px(2+3) / 1本目=10px(4+6)。下端の表紙との隙間も3px。 */
+  background-position: center 0, center 5px, center 10px;
 }
 
 /* 冊数バッジ: 出版社/シリーズ名の帯（プレースホルダー下辺）に重ならないよう
@@ -375,6 +378,17 @@ a { color: var(--sky-deep); }
 }
 .overlay__close:hover { color: var(--text); background: var(--surface-2); }
 
+/* 詳細画面の上部に表示する書影（書影ありの場合のみ） */
+.ov__cover {
+  display: block;
+  width: 150px;
+  max-width: 50%;
+  height: auto;
+  margin: 0 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(31, 155, 196, 0.18);
+}
 .ov__title { margin: 0 2rem 0.3rem 0; font-size: 1.2rem; line-height: 1.4; }
 .ov__author { margin: 0 0 1rem; color: var(--muted); }
 .ov__badge {
