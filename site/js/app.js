@@ -119,7 +119,7 @@ function yearBg(year) {
 }
 
 /* 出版年から文字色 2 種を返す（未定義は最古扱いで常に色を返す）。
- *  - main: プレースホルダー下辺の帯（出版社/シリーズ名ラベル）と表紙下メタの出版年の文字色
+ *  - main: 表紙下メタの出版年・シリーズ名の文字色
  *  - soft: プレースホルダー下辺の区切り線（淡い同系色） */
 function yearColors(year) {
   const c = yearHsl(year);
@@ -130,6 +130,14 @@ function yearColors(year) {
     main: `hsl(${h} ${s}% ${l}%)`,
     soft: `hsl(${h} ${softS}% ${softL}%)`,
   };
+}
+
+/* プレースホルダー下辺（出版社/シリーズ名ラベル）専用の文字色。
+ * 色相は出版年の色相をそのまま基本色として使うが、彩度・明度を低く固定し、
+ * 年によらず黒系の文字として読めるようにする（彩度・明度のばらつきを排除）。 */
+function yearTextColor(year) {
+  const h = Math.round(yearHsl(year).h);
+  return `hsl(${h} 35% 20%)`;
 }
 
 /* シリーズ名を巻号情報から切り出す（"岩波新書, 青版-434" → "岩波新書"、
@@ -267,7 +275,7 @@ function coverHtml(book, label) {
   // タイトル/著者は読みやすさのため通常の濃色のまま（地色は明るめに保つ）。
   const yc = yearColors(book.year);
   const bgStyle = ` style="background:${yearBg(book.year)}"`;
-  const bottomStyle = ` style="color:${yc.main};border-top-color:${yc.soft}"`;
+  const bottomStyle = ` style="color:${yearTextColor(book.year)};border-top-color:${yc.soft}"`;
   return `
     <div class="cover cover--placeholder"${bgStyle}>
       <div class="ph__top">
