@@ -67,6 +67,62 @@ function publisherText(book) {
   return (book.publishers && book.publishers.length) ? book.publishers.join('、') : '';
 }
 
+/* ---------- 出版年→色（年ごとのグラデーション） ----------
+ * 出版年に応じてプレースホルダー下辺の帯と表紙下メタの出版年を着色する。
+ * 年代でカテゴリ分けせず 1 年ごとに連続変化させ、色分けの境界も滑らかに繋ぐ。
+ *  - 2000 年以降: 水色。新しいほど淡く（明るく）。
+ *  - 1950〜2000 年: 1950 に近づくほどやや深い緑へ。
+ *  - 1950 年以前: 赤。古くなるほど暗い赤へ。
+ * 全体として古いものほど暗く見えるよう明度を下げていく。
+ * HSL の各成分をアンカー（YEAR_STOPS）間で線形補間して求める。色相は単調に
+ * 推移するため折り返し不要。細かな色相は後から YEAR_STOPS を調整できる（試作値）。 */
+const YEAR_STOPS = [
+  { y: 2025, h: 195, s: 58, l: 72 }, // 最も新しい: 淡い水色
+  { y: 2000, h: 197, s: 72, l: 52 }, // 水色の基準
+  { y: 1955, h: 145, s: 48, l: 40 }, // やや深い緑
+  { y: 1945, h: 18,  s: 60, l: 42 }, // 1950 境界直下: 赤へ切り替え（短い遷移）
+  { y: 1900, h: 8,   s: 58, l: 38 }, // 赤
+  { y: 1850, h: 4,   s: 52, l: 28 }, // 暗い赤
+  { y: 1780, h: 0,   s: 48, l: 20 }, // さらに古い: より暗い赤
+];
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function yearHsl(year) {
+  const stops = YEAR_STOPS;
+  if (year >= stops[0].y) return { ...stops[0] };
+  const last = stops[stops.length - 1];
+  if (year <= last.y) return { ...last };
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i], b = stops[i + 1]; // a.y > b.y
+    if (year <= a.y && year >= b.y) {
+      const t = (a.y - year) / (a.y - b.y);
+      return { h: lerp(a.h, b.h, t), s: lerp(a.s, b.s, t), l: lerp(a.l, b.l, t) };
+    }
+  }
+  return { ...last };
+}
+
+/* 出版年から 3 色を返す。
+ *  - main:     プレースホルダー下辺の帯（出版社/シリーズ名ラベル）の文字色
+ *  - yearText: 表紙下メタの出版年。main と同色だが少し薄く（明るく）して視認性維持
+ *  - soft:     プレースホルダー下辺の区切り線（淡い同系色）
+ * 出版年が無ければ null（既定の水色のまま）。 */
+function yearColors(year) {
+  if (year == null) return null;
+  const c = yearHsl(year);
+  const h = Math.round(c.h), s = Math.round(c.s), l = Math.round(c.l);
+  const yl = Math.min(l + 12, 62);          // 少し明るく（ただし読みやすさのため上限）
+  const ys = Math.max(s - 6, 0);
+  const softS = Math.max(s - 22, 0);
+  const softL = Math.min(l + 32, 86);
+  return {
+    main: `hsl(${h} ${s}% ${l}%)`,
+    yearText: `hsl(${h} ${ys}% ${yl}%)`,
+    soft: `hsl(${h} ${softS}% ${softL}%)`,
+  };
+}
+
 /* シリーズ名を巻号情報から切り出す（"岩波新書, 青版-434" → "岩波新書"、
  * "越境する知 / 栗原彬 [ほか] 編, 5" → "越境する知"） */
 function seriesName(item) {
@@ -164,6 +220,10 @@ function coverHtml(book, label) {
   if (book.coverUrl) {
     return `<div class="cover"><img class="cover__img" src="${escapeHtml(book.coverUrl)}" loading="lazy" alt="${escapeHtml(book.title)} の表紙"></div>`;
   }
+  // プレースホルダーは面全体ではなく、従来 水色 だった下辺の帯（出版社/シリーズ名）と
+  // その区切り線にのみ出版年由来の色を適用する。タイトル/著者は通常色のまま。
+  const yc = yearColors(book.year);
+  const bottomStyle = yc ? ` style="color:${yc.main};border-top-color:${yc.soft}"` : '';
   return `
     <div class="cover cover--placeholder">
       <div class="ph__top">
@@ -171,7 +231,7 @@ function coverHtml(book, label) {
         <div class="ph__author">${escapeHtml(authorText(book))}</div>
       </div>
       <div class="ph__spacer"></div>
-      <div class="ph__bottom">${escapeHtml(label)}</div>
+      <div class="ph__bottom"${bottomStyle}>${escapeHtml(label)}</div>
     </div>`;
 }
 
@@ -188,8 +248,11 @@ function subYearHtml(pub, isSeries, year) {
   const pubSpan = pub ? `<span class="${pubCls}">${escapeHtml(pub)}</span>` : '';
   // 出版社（orシリーズ名）と出版年の両方があるときだけ区切り ", " を年側に付ける。
   const sep = (pub && hasYear) ? ', ' : '';
+  // 出版年もプレースホルダー帯と同色（少し薄め）にして年代が一目で分かるようにする。
+  const yc = yearColors(year);
+  const yearStyle = yc ? ` style="color:${yc.yearText}"` : '';
   const yearSpan = hasYear
-    ? `<span class="meta__year" data-year="${escapeHtml(String(year))}">${escapeHtml(sep + year + '年')}</span>`
+    ? `<span class="meta__year" data-year="${escapeHtml(String(year))}"${yearStyle}>${escapeHtml(sep + year + '年')}</span>`
     : '';
   return `<div class="meta__sub">${pubSpan}${yearSpan}</div>`;
 }
