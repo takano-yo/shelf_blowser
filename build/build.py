@@ -168,18 +168,40 @@ def has_others_marker(group):
     return bool(OTHERS_MARKER.search(group))
 
 
+def _first_authorship_segment(group):
+    """第 1 役割グループから『第 1 寄与者の著系役割が完結するまで』を切り出す。
+
+    著系役割語（著・共著・執筆・著者）が最初に現れる位置までを第 1 寄与者の
+    著者表記とみなす。これにより、第 1 寄与者が著で完結した後ろに続く別寄与者
+    （`◯◯著, ◯◯ほか編` のように同一グループ内でも）の「ほか/他」を、第 1 寄与者
+    の省略表記と取り違えない。著系役割が無ければグループ全体を返す。
+    """
+    roles = sorted(PERSONAL_ROLES, key=len, reverse=True)
+    for i in range(len(group)):
+        for role in roles:
+            if group.startswith(role, i):
+                return group[: i + len(role)]
+    return group
+
+
 def contrib_kind(raw):
     """第 1 寄与者の役割から本の種別を返す（site の棚分割に使う）。
     - "personal" : 単著/共著（第 1 寄与者が 著・共著・執筆・著者）
     - "editorial": 編集書（それ以外。編・訳・校注・編著・編集委員 … と著者表記なし。
-                   および「ほか/他」省略表記を含むもの＝多数著者のまとめ）
+                   および第 1 寄与者『自身』が「ほか/他」省略表記を含むもの）
     """
     if not raw or not raw.strip():
         return "editorial"
-    # 第 1 寄与者グループに「ほか/他」省略表記があれば、筆頭役割に関わらず編集書。
-    if has_others_marker(ROLE_GROUP_SEP.split(raw.strip())[0]):
+    first_group = ROLE_GROUP_SEP.split(raw.strip())[0]
+    # 第 1 寄与者の役割が著系でなければ編集書。
+    if _first_contributor_role(raw) not in PERSONAL_ROLES:
         return "editorial"
-    return "personal" if _first_contributor_role(raw) in PERSONAL_ROLES else "editorial"
+    # 第 1 寄与者が著系 → 原則 personal。ただし第 1 寄与者『自身』が「ほか/他」
+    # （著者多数の省略）を含むなら editorial（例: `◯◯ほか著`）。著系役割が完結した
+    # 後ろに続く別寄与者の「ほか/他」では editorial にしない
+    # （例: `◯◯著 ; ◯◯ほか編` は personal）。
+    seg = _first_authorship_segment(first_group)
+    return "editorial" if has_others_marker(seg) else "personal"
 
 
 def extract_isbn(has_part):
