@@ -93,6 +93,65 @@ def normalize_creators(raw):
     return out
 
 
+# --- 寄与者の種別判定（単著/共著 ⇔ 編集書）に使う ---
+# 第 1 寄与者の役割が「著・共著・執筆・著者」なら単著/共著、それ以外（編・訳・校注・
+# 編著・編集委員 …）および著者表記なし（creatorRaw が空）は編集書とする。
+# 「編著」を「著」と誤認しないよう、役割語は長いものから最長一致で取り出す。
+PERSONAL_ROLES = {"著", "共著", "執筆", "著者"}
+# 役割語の検出辞書（最長一致・決定的順）。著で終わるが単著でない「編著」等を優先一致。
+ROLE_DETECT = sorted(
+    set(ROLE_WORDS) | {"執筆", "著者", "編集委員", "責任編集", "編集協力"},
+    key=lambda r: (-len(r), r),
+)
+# 役割グループ（別の役割の寄与者）の区切り。" ; " と " . "。
+# 同一役割の共著者を並べる "," は区切らない（末尾にまとめて属性が付くため）。
+ROLE_GROUP_SEP = re.compile(r"\s*;\s*|\s+\.\s+")
+# 先頭に属性が来る表記（"[著者] 宮本正人" など）。
+LEADING_ROLE = re.compile(r"^\[?\s*(著者|著|執筆|共著)\s*\]?[\s　]")
+
+
+def _role_suffix(s):
+    """文字列末尾の役割語を最長一致で返す（無ければ ""）。"""
+    s = s.strip().rstrip(TRAIL_PUNCT)
+    for role in ROLE_DETECT:
+        if s.endswith(role):
+            return role
+    return ""
+
+
+def _first_contributor_role(raw):
+    """creatorRaw の第 1 寄与者の役割語を取り出す。
+    複数名が "," で並びまとめて属性が付くケース・角括弧表記（[著]/[ほか編集]/
+    [ほか]著）・先頭属性（[著者] 名）に対応する。"""
+    group = ROLE_GROUP_SEP.split(raw.strip())[0].strip()
+    m = LEADING_ROLE.match(group)
+    if m:
+        return m.group(1)
+    s = group
+    # 末尾の角括弧内に役割があれば優先（[著]/[ほか編集]）。
+    # 「ほか」等のみの括弧は捨て、その外側の役割（[ほか]著）を探す。
+    for _ in range(4):
+        s = s.rstrip(TRAIL_PUNCT)
+        mb = re.search(r"\[([^\]]*)\]$", s)
+        if not mb:
+            break
+        role = _role_suffix(mb.group(1))
+        if role:
+            return role
+        s = s[: mb.start()]
+    return _role_suffix(s)
+
+
+def contrib_kind(raw):
+    """第 1 寄与者の役割から本の種別を返す（site の棚分割に使う）。
+    - "personal" : 単著/共著（第 1 寄与者が 著・共著・執筆・著者）
+    - "editorial": 編集書（それ以外。編・訳・校注・編著・編集委員 … と著者表記なし）
+    """
+    if not raw or not raw.strip():
+        return "editorial"
+    return "personal" if _first_contributor_role(raw) in PERSONAL_ROLES else "editorial"
+
+
 def extract_isbn(has_part):
     """dcterms:hasPart から urn:isbn: のみを採用し接頭辞を除く（ISSN は除外）。"""
     isbns = []
@@ -137,6 +196,7 @@ def normalize_item(item):
         "title": (item.get("title") or "").strip(),
         "creators": normalize_creators(raw_creator),
         "creatorRaw": raw_creator,
+        "contribKind": contrib_kind(raw_creator),
         "publishers": list(item.get("dc:publisher") or []),
         "year": year,
         "decade": decade,
