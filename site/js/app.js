@@ -52,18 +52,26 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-function authorText(book) {
+function authorName(book) {
   if (book.creators && book.creators.length) return book.creators.join('、');
   if (book.creatorRaw) return book.creatorRaw;
-  return '著者不明';
+  return '';
+}
+
+function authorText(book) {
+  return authorName(book) || '著者不明';
 }
 
 // 表紙下メタの著者欄用。寄与情報（著・編・校注 など）込みの CiNii Books 生データ
 // （creatorRaw）をそのまま表示する。生データが無ければ整形済みの著者名にフォールバック。
-function authorRawText(book) {
+function authorRawName(book) {
   if (book.creatorRaw) return book.creatorRaw;
   if (book.creators && book.creators.length) return book.creators.join('、');
-  return '著者不明';
+  return '';
+}
+
+function authorRawText(book) {
+  return authorRawName(book) || '著者不明';
 }
 
 function publisherText(book) {
@@ -280,7 +288,7 @@ function coverHtml(book, label) {
     <div class="cover cover--placeholder"${bgStyle}>
       <div class="ph__top">
         <div class="ph__title">${escapeHtml(book.title)}</div>
-        <div class="ph__author">${escapeHtml(authorText(book))}</div>
+        <div class="ph__author">${escapeHtml(authorName(book))}</div>
       </div>
       <div class="ph__spacer"></div>
       <div class="ph__bottom"${bottomStyle}>${escapeHtml(label)}</div>
@@ -341,7 +349,7 @@ function itemHtml(item, idx) {
       ${cover}
       <div class="meta">
         <div class="meta__title">${escapeHtml(book.title)}</div>
-        <div class="meta__author">${escapeHtml(authorRawText(book))}</div>
+        <div class="meta__author">${escapeHtml(authorRawName(book))}</div>
         ${subYearHtml(isSeries ? sName : publisherText(book), isSeries, book.year)}
       </div>
     </article>`;
