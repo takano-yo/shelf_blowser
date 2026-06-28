@@ -14,11 +14,14 @@ const META_URL = 'data/meta.json';
 // 1 冊を少数に分冊しただけのものは閾値未満となり、シリーズ以外（単独）へ回す。
 const MULTI_VOLUME_MIN = 4;
 
-// シリーズ:シリーズ以外 の混在ピッチ。シリーズ的 1 件ごとに、その手前へ置く
-// シリーズ以外の冊数を [MIN, MAX] からランダムに選ぶ（平均約 6）。
-// 乱数は固定シードで決め打ち（リフレッシュしても並びは不変）。
-const MIX_GAP_MIN = 4;
-const MIX_GAP_MAX = 8;
+// 混在方式（ブロック配分）。4〜8冊（平均6）を 1 ブロックとし、各ブロックへ
+// 編集書 1 冊・シリーズ的 1 冊を入れ、残りを単著/共著で埋める（編集書・シリーズの
+// ブロック内位置はランダム）。単著/共著が尽きるまでブロックを繰り返す＝この間
+// 編集書とシリーズは同割合（1:1）で混ざる。単著/共著が尽きたら、残りの編集書と
+// シリーズを冊数比率に合わせて混ぜ末尾へ付ける。乱数は固定シードで再現可能
+// （リフレッシュしても並びは不変）。
+const MIX_GAP_MIN = 4; // 1 ブロックの総冊数の下限
+const MIX_GAP_MAX = 8; // 同・上限
 const MIX_SEED = 0x9e3779b9;
 
 const els = {
@@ -178,12 +181,23 @@ function buildShelfItems(books) {
     return na < nb ? -1 : na > nb ? 1 : 0;
   };
 
-  // 「シリーズ的」= シリーズ束（1冊のみも含む） or 多巻単独（巻数 >= 閾値）。
-  // 単独と分け、それぞれ所蔵館数順に整列したうえで、シリーズ以外を平均6冊ごとに
-  // シリーズ的を1件挟む（間隔 4〜8、固定シード乱数）形で混ぜる。
+  // 棚は 3 種に分かれる:
+  //  - 単著/共著（personal）= 土台。ブロックの残り冊を埋める主たる流れ。
+  //  - 編集書（editorial）  = 第1寄与者が著以外（編・訳・校注・編著…）＋著者表記なし。
+  //  - シリーズ的           = シリーズ束 or 多巻単独（巻数 >= 閾値）。
+  // 各バケットを所蔵館数順に整列し、ブロック配分（mixBlocks）で混ぜる。
+  const solo = items.filter(it => !isSeriesLike(it));
+  const personalBucket = solo.filter(it => !isEditorial(it)).sort(byHoldings);
+  const editorialBucket = solo.filter(isEditorial).sort(byHoldings);
   const seriesBucket = items.filter(isSeriesLike).sort(byHoldings);
-  const soloBucket = items.filter(it => !isSeriesLike(it)).sort(byHoldings);
-  return mixBuckets(soloBucket, seriesBucket, mulberry32(MIX_SEED));
+  return mixBlocks(personalBucket, seriesBucket, editorialBucket, mulberry32(MIX_SEED));
+}
+
+/* 単独本の寄与者種別が「編集書」か。build が各レコードへ付与した contribKind を読む。
+ * 'editorial' = 第1寄与者が著以外（編・訳・校注・編著・編集委員…）または著者表記なし。
+ * シリーズ的アイテムは挟む側へ回るため、ここでは単独本のみを対象にする。 */
+function isEditorial(it) {
+  return it.type === 'single' && it.book.contribKind === 'editorial';
 }
 
 /* シリーズ的か = シリーズ束 or 多巻単独（巻数 = ISBN 数が閾値以上）。
@@ -205,16 +219,39 @@ function mulberry32(seed) {
   };
 }
 
-/* solo を gap（4〜8）冊ごとに 1 件の series を挟みつつ連結する。
- * 片方が尽きたら、残りはそのまま流し込む（= series が余れば末尾に偏る）。 */
-function mixBuckets(solo, series, rng) {
+/* ブロック配分。4〜8冊（rng で決定）を 1 ブロックとし、編集書 1 冊・シリーズ的 1 冊を
+ * ブロック内ランダム位置へ入れ、残りを単著/共著で埋める。単著/共著が尽きるまで
+ * ブロックを繰り返す（この間、編集書とシリーズは 1:1 の同割合で消費）。尽きたら、
+ * 残った編集書とシリーズを冊数比率で混ぜて末尾へ連結する。各バケットは所蔵館数順
+ * に整列済みで、先頭から消費する。 */
+function mixBlocks(personal, series, editorial, rng) {
   const span = MIX_GAP_MAX - MIX_GAP_MIN + 1;
   const out = [];
+  let pi = 0, si = 0, ei = 0;
+  while (pi < personal.length) {
+    const size = MIX_GAP_MIN + Math.floor(rng() * span); // ブロック総冊数 4〜8
+    const block = [];
+    for (let k = 0; k < size - 2 && pi < personal.length; k++) block.push(personal[pi++]);
+    // 編集書・シリーズを 1 冊ずつ、ブロック内のランダム位置へ挿入する。
+    if (si < series.length) block.splice(Math.floor(rng() * (block.length + 1)), 0, series[si++]);
+    if (ei < editorial.length) block.splice(Math.floor(rng() * (block.length + 1)), 0, editorial[ei++]);
+    for (const it of block) out.push(it);
+  }
+  // 単著/共著が尽きた後の残り。編集書とシリーズを冊数比率に合わせて混ぜる。
+  for (const it of interleaveByRatio(series.slice(si), editorial.slice(ei))) out.push(it);
+  return out;
+}
+
+/* 2 つの整列済み配列を、それぞれの冊数比率に合わせて均等に交互へ混ぜる
+ * （所蔵館数順は各配列内で保持）。一方が空ならもう一方をそのまま返す。 */
+function interleaveByRatio(a, b) {
+  const na = a.length, nb = b.length;
+  const out = [];
   let i = 0, j = 0;
-  while (i < solo.length || j < series.length) {
-    const gap = MIX_GAP_MIN + Math.floor(rng() * span);
-    for (let k = 0; k < gap && i < solo.length; k++) out.push(solo[i++]);
-    if (j < series.length) out.push(series[j++]);
+  while (i < na || j < nb) {
+    // 進捗割合（(i+0.5)/na ⇔ (j+0.5)/nb）が小さい＝遅れている側を先に出す。
+    if (j >= nb || (i < na && (i + 0.5) * nb <= (j + 0.5) * na)) out.push(a[i++]);
+    else out.push(b[j++]);
   }
   return out;
 }
@@ -587,9 +624,10 @@ async function init() {
     applyShelfLayout(true);
 
     const seriesCount = shelfItems.filter(isSeriesLike).length;
+    const editorialCount = shelfItems.filter(isEditorial).length;
     const total = (meta && meta.total) || books.length;
     els.stats.textContent =
-      `全 ${total.toLocaleString()} 件（${shelfItems.length.toLocaleString()} の棚／うちシリーズ・多巻 ${seriesCount.toLocaleString()} 件）を所蔵館数順に、単独およそ6冊ごとにシリーズ・多巻を1件挟んで配置。`;
+      `全 ${total.toLocaleString()} 件（${shelfItems.length.toLocaleString()} の棚／うちシリーズ・多巻 ${seriesCount.toLocaleString()} 件・編集書 ${editorialCount.toLocaleString()} 件）を所蔵館数順に、単著/共著を土台とし4〜8冊ごとにシリーズ・多巻と編集書を1件ずつ混ぜて配置。`;
   } catch (err) {
     els.shelf.setAttribute('aria-busy', 'false');
     els.shelf.innerHTML =
