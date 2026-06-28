@@ -70,30 +70,26 @@ function publisherText(book) {
 /* ---------- 出版年→色（年ごとのグラデーション） ----------
  * 出版年に応じてプレースホルダーの地色グラデーション・下辺の帯・表紙下メタの
  * 出版年を着色する。年代でカテゴリ分けせず 1 年ごとに連続変化させる。
- *  - 新しい（2026 に近い）ほど明るく・鮮やかに、古いほど暗く・地味に見せる。
- *  - 色相は 古=赤 → 中=緑 → 新=水色。鮮やかさ（彩度）も 赤 < 緑 < 水色 の順。
- *  - 1900 年代後半も水色系。水色は視認性確保のため濃いめ＆高彩度にする。
+ *  - 色相は 古=赤 → 中=緑 → 新=水色。境界は 2000 年（水色↔緑）/ 1950 年（緑↔赤）。
+ *  - 鮮やかさ（彩度）は 赤 < 緑 < 水色 の順。古いほど暗く地味（明度を下げる）。
+ *  - 地色グラデーションは濃くしすぎず、淡い明るさを保ったまま色相（系統）だけ変える。
  * 出版年が未定義のものは最も古い年（1792）と同等に扱う。
  * HSL 各成分をアンカー（YEAR_STOPS）間で線形補間して求める。 */
-const YEAR_NEW = 2026;
 const YEAR_OLD = 1792;
 const YEAR_STOPS = [
-  { y: 2026, h: 186, s: 82, l: 50 }, // 最新: 鮮やかで濃いめの水色（視認性UP）
-  { y: 1970, h: 192, s: 76, l: 45 }, // 1900 年代後半も水色系
-  { y: 1945, h: 150, s: 58, l: 40 }, // 緑（中程度の鮮やかさ）
-  { y: 1915, h: 22,  s: 50, l: 36 }, // 赤橙
-  { y: 1880, h: 8,   s: 42, l: 30 }, // 赤
+  { y: 2026, h: 190, s: 80, l: 46 }, // 最新: 鮮やかな水色
+  { y: 2000, h: 196, s: 78, l: 44 }, // 2000: 水色↔緑の境界（水色側）
+  { y: 1950, h: 150, s: 56, l: 38 }, // 1950: 緑↔赤の境界（緑側）
+  { y: 1940, h: 16,  s: 52, l: 36 }, // 1950 直下で赤へ切り替え（短い遷移）
+  { y: 1900, h: 8,   s: 48, l: 33 }, // 赤
+  { y: 1850, h: 5,   s: 42, l: 28 }, // 暗い赤
   { y: 1792, h: 2,   s: 34, l: 22 }, // 最古: 暗く地味な赤
 ];
 
 function lerp(a, b, t) { return a + (b - a) * t; }
-function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
 
 // 未定義は最古年扱い。
 function yearOr(year) { return (year == null) ? YEAR_OLD : year; }
-
-// 正規化エイジ: 0 = 最新(2026) … 1 = 最古(1792)。
-function yearT(year) { return clamp((YEAR_NEW - yearOr(year)) / (YEAR_NEW - YEAR_OLD), 0, 1); }
 
 function yearHsl(year) {
   const y = yearOr(year);
@@ -111,34 +107,24 @@ function yearHsl(year) {
   return { ...last };
 }
 
-/* プレースホルダーの地色グラデーション（年代色）。
- * 文字（濃色のタイトル/著者）が読めるよう明るめに保ちつつ、上端は淡く、下端ほど
- * 濃く（彩度を上げ）て年代色をはっきり出す。新しいほど明るく鮮やか、古いほど
- * 暗く地味（彩度・明度とも下げる）。 */
+/* プレースホルダーの地色グラデーション。濃くしすぎず、元の淡い地色の明るさを保った
+ * まま、色相（系統＝赤/緑/水色）だけを出版年で変える。明度・彩度は年によらず一定。 */
 function yearBg(year) {
   const h = Math.round(yearHsl(year).h);
-  const t = yearT(year);
-  const topL = Math.round(lerp(97, 91, t)), topS = Math.round(lerp(46, 18, t));
-  const midL = Math.round(lerp(90, 83, t)), midS = Math.round(lerp(64, 28, t));
-  const botL = Math.round(lerp(82, 73, t)), botS = Math.round(lerp(86, 40, t));
-  return `linear-gradient(160deg, hsl(${h} ${topS}% ${topL}%) 0%, `
-    + `hsl(${h} ${midS}% ${midL}%) 55%, hsl(${h} ${botS}% ${botL}%) 100%)`;
+  return `linear-gradient(160deg, hsl(${h} 30% 99%) 0%, `
+    + `hsl(${h} 45% 97%) 55%, hsl(${h} 52% 93%) 100%)`;
 }
 
-/* 出版年から文字色 3 種を返す（未定義は最古扱いで常に色を返す）。
- *  - main:     プレースホルダー下辺の帯（出版社/シリーズ名ラベル）の文字色
- *  - yearText: 表紙下メタの出版年。main と同系で少し明るめ（地のメタ背景で読める範囲）
- *  - soft:     プレースホルダー下辺の区切り線（淡い同系色） */
+/* 出版年から文字色 2 種を返す（未定義は最古扱いで常に色を返す）。
+ *  - main: プレースホルダー下辺の帯（出版社/シリーズ名ラベル）と表紙下メタの出版年の文字色
+ *  - soft: プレースホルダー下辺の区切り線（淡い同系色） */
 function yearColors(year) {
   const c = yearHsl(year);
   const h = Math.round(c.h), s = Math.round(c.s), l = Math.round(c.l);
-  const yl = Math.min(l + 8, 56);           // 出版年テキストは少しだけ明るく（上限あり）
-  const ys = Math.max(s - 6, 0);
   const softS = Math.max(s - 24, 12);
   const softL = Math.min(l + 34, 88);
   return {
     main: `hsl(${h} ${s}% ${l}%)`,
-    yearText: `hsl(${h} ${ys}% ${yl}%)`,
     soft: `hsl(${h} ${softS}% ${softL}%)`,
   };
 }
@@ -267,15 +253,15 @@ function subYearHtml(pub, isSeries, year) {
   if (!pub && !hasYear) return '';
   const pubCls = isSeries ? 'meta__pub meta__pub--series' : 'meta__pub';
   const pubSpan = pub ? `<span class="${pubCls}">${escapeHtml(pub)}</span>` : '';
-  // 出版社（orシリーズ名）と出版年の両方があるときだけ区切り ", " を年側に付ける。
-  const sep = (pub && hasYear) ? ', ' : '';
-  // 出版年もプレースホルダー帯と同色（少し薄め）にして年代が一目で分かるようにする。
+  // 出版社（orシリーズ名）と出版年の両方があるときだけ区切り ", " を入れる。
+  // 区切りカンマは色を付けず（通常の濃色＝黒系）、出版年だけ年代色にする。
+  const sepSpan = (pub && hasYear) ? `<span class="meta__sep">, </span>` : '';
+  // 出版年はプレースホルダーの出版社ラベルと同じ濃さ（yc.main）で太字表示。
   const yc = yearColors(year);
-  const yearStyle = yc ? ` style="color:${yc.yearText}"` : '';
   const yearSpan = hasYear
-    ? `<span class="meta__year" data-year="${escapeHtml(String(year))}"${yearStyle}>${escapeHtml(sep + year + '年')}</span>`
+    ? `<span class="meta__year" data-year="${escapeHtml(String(year))}" style="color:${yc.main}">${escapeHtml(year + '年')}</span>`
     : '';
-  return `<div class="meta__sub">${pubSpan}${yearSpan}</div>`;
+  return `<div class="meta__sub">${pubSpan}${sepSpan}${yearSpan}</div>`;
 }
 
 function itemHtml(item, idx) {
