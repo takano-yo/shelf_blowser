@@ -391,6 +391,7 @@ a { color: var(--sky-deep); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.meta__pub--series { font-weight: 700; }
 /* 出版年は縮めない（出版社が長くても年は省略しない）。
    将来は data-year で年ごとに色分けできる（例: .meta__year[data-year="1977"]{...}）。 */
 /* 区切りカンマは通常の濃色（黒系）のまま・縮めない。出版年だけ年代色＋太字。 */
