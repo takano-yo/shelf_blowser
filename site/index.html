@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>shelf_blowser — 日本近代文学の本棚</title>
   <meta name="description" content="CiNii Books の書誌データを本棚のように並べてブラウジングする学術検索支援アプリ（試作版：日本近代文学）">
-  <link rel="stylesheet" href="css/styles.css?v=20260628b">
+  <link rel="stylesheet" href="css/styles.css?v=20260628c">
 </head>
 <body>
   <!-- ページ最上部のヘッダ（タイトル/説明）。スクロールには追随せず流れて消える。 -->
@@ -22,7 +22,14 @@
   <!-- 検索バーのみスクロールに追随して最上部に残る -->
   <div class="searchbar">
     <div class="searchbar__inner">
-      <!-- 検索窓（現フェーズはダミー） -->
+      <!-- 表示切り替えタブ（左）。それぞれ該当する書籍だけを所蔵館数順に並べる。 -->
+      <div class="tabs" id="tabs" role="tablist" aria-label="表示する書籍の切り替え">
+        <button class="tab is-active" type="button" role="tab" data-tab="all" aria-selected="true">すべて</button>
+        <button class="tab" type="button" role="tab" data-tab="personal" aria-selected="false">単著/共著</button>
+        <button class="tab" type="button" role="tab" data-tab="editorial" aria-selected="false">編集書</button>
+        <button class="tab" type="button" role="tab" data-tab="series" aria-selected="false">シリーズ</button>
+      </div>
+      <!-- 検索窓（現フェーズはダミー）。タブの右へ寄せる。 -->
       <form class="search" id="search-form" role="search" aria-label="書誌検索（準備中）">
         <input
           class="search__input"
@@ -55,6 +62,6 @@
     <p>データ出典: <a href="https://support.nii.ac.jp/ja/cib/api/b_opensearch" target="_blank" rel="noopener">CiNii Books OpenSearch API</a>／表紙画像: <a href="https://openbd.jp/" target="_blank" rel="noopener">openBD</a></p>
   </footer>
 
-  <script src="js/app.js?v=20260628b" defer></script>
+  <script src="js/app.js?v=20260628c" defer></script>
 </body>
 </html>

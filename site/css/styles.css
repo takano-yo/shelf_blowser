@@ -90,14 +90,47 @@ a { color: var(--sky-deep); }
   max-width: 88rem;
   margin: 0 auto;
   padding: 0.6rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  flex-wrap: wrap;
 }
 
-/* 検索窓（ダミー） */
+/* ===== 表示切り替えタブ ===== */
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 1 auto;
+}
+.tab {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.tab:hover { color: var(--text); background: var(--surface-2); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tab.is-active {
+  color: #fff;
+  background: var(--sky-deep);
+  border-color: var(--sky-deep);
+}
+
+/* 検索窓（ダミー）。タブの右へ寄せる。 */
 .search {
   display: flex;
   align-items: stretch;
-  width: 100%;
-  max-width: 40rem;
+  flex: 1 1 18rem;
+  min-width: 0;
+  max-width: 30rem;
+  margin-left: auto;
 }
 
 .search__input {
@@ -494,6 +527,14 @@ a { color: var(--sky-deep); }
   :root { --book-w: 7rem; }
   .shelf { gap: 1.25rem 0.85rem; }
   .site-header__bar { gap: 0.6rem; }
+  /* タブは横スクロールで全タブへ到達できるようにする（折り返さない）。 */
+  .tabs {
+    flex: 1 1 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
   .search { flex-basis: 100%; margin-left: 0; max-width: none; }
   /* モバイルは詳細をボトムシート化 */
   .overlay__panel {

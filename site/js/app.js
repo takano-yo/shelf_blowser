@@ -31,14 +31,22 @@ const els = {
   overlay: document.getElementById('overlay'),
   overlayBody: document.getElementById('overlay-body'),
   searchForm: document.getElementById('search-form'),
+  tabs: document.getElementById('tabs'),
 };
+
+// タブ定義（表示順＝左から）。各タブが描画するアイテム集合は init で構築する。
+const TAB_LABELS = { all: 'すべて', personal: '単著/共著', editorial: '編集書', series: 'シリーズ' };
 
 // ホバー時に表紙と交代して詳細を表示する使い回しレイヤー（1個を貼り替える）。
 const coverDetail = document.createElement('div');
 coverDetail.className = 'cover-detail';
 coverDetail.setAttribute('aria-hidden', 'true');
 
-let shelfItems = []; // 描画単位（単独本 or シリーズ束）
+let shelfItems = [];     // 現在表示中タブのアイテム（カードの data-idx の参照先）
+let tabItems = { all: [], personal: [], editorial: [], series: [] }; // タブ別アイテム集合
+let activeTab = 'all';
+let totalBooks = 0;      // 全書誌件数（統計表示用）
+const scrollByTab = Object.create(null); // タブ -> 直近のスクロール位置（切替時に保存/復元）
 
 /* ---------- ユーティリティ ---------- */
 
@@ -185,12 +193,18 @@ function buildShelfItems(books) {
   //  - 単著/共著（personal）= 土台。ブロックの残り冊を埋める主たる流れ。
   //  - 編集書（editorial）  = 第1寄与者が著以外（編・訳・校注・編著…）＋著者表記なし。
   //  - シリーズ的           = シリーズ束 or 多巻単独（巻数 >= 閾値）。
-  // 各バケットを所蔵館数順に整列し、ブロック配分（mixBlocks）で混ぜる。
+  // 各バケットを所蔵館数順に整列する。タブ別表示はこの 3 バケットをそのまま用い
+  //（各タブ＝該当書籍のみ・所蔵館数順）、「すべて」はブロック配分（mixBlocks）で混ぜる。
   const solo = items.filter(it => !isSeriesLike(it));
   const personalBucket = solo.filter(it => !isEditorial(it)).sort(byHoldings);
   const editorialBucket = solo.filter(isEditorial).sort(byHoldings);
   const seriesBucket = items.filter(isSeriesLike).sort(byHoldings);
-  return mixBlocks(personalBucket, seriesBucket, editorialBucket, mulberry32(MIX_SEED));
+  return {
+    all: mixBlocks(personalBucket, seriesBucket, editorialBucket, mulberry32(MIX_SEED)),
+    personal: personalBucket,
+    editorial: editorialBucket,
+    series: seriesBucket,
+  };
 }
 
 /* 単独本の寄与者種別が「編集書」か。build が各レコードへ付与した contribKind を読む。
@@ -343,6 +357,43 @@ function renderShelf() {
   const html = shelfItems.map((it, i) => itemHtml(it, i)).join('');
   els.shelf.innerHTML = html;
   els.shelf.setAttribute('aria-busy', 'false');
+}
+
+/* ---------- タブ（表示する書籍の切り替え） ---------- */
+
+/* 統計行を現在のタブに合わせて更新する。「すべて」は全体構成、ほかは件数を示す。 */
+function updateStats() {
+  const n = shelfItems.length;
+  if (activeTab === 'all') {
+    els.stats.textContent =
+      `全 ${totalBooks.toLocaleString()} 件（${n.toLocaleString()} の棚／うちシリーズ・多巻 ${tabItems.series.length.toLocaleString()} 件・編集書 ${tabItems.editorial.length.toLocaleString()} 件）を所蔵館数順に、単著/共著を土台とし4〜8冊ごとにシリーズ・多巻と編集書を1件ずつ混ぜて配置。`;
+  } else {
+    els.stats.textContent = `「${TAB_LABELS[activeTab]}」${n.toLocaleString()} 件を所蔵館数順に表示。`;
+  }
+}
+
+/* タブを切り替える。離脱前に現在のスクロール位置を保存し、戻ってきたときに復元する
+ * （例: すべて→単著/共著→すべて で元の位置に戻る）。初訪問のタブは先頭から表示。 */
+function switchTab(tab) {
+  if (tab === activeTab || !tabItems[tab]) return;
+  scrollByTab[activeTab] = window.scrollY; // 離脱するタブの位置を保存
+  activeTab = tab;
+
+  els.tabs.querySelectorAll('.tab').forEach((b) => {
+    const on = b.dataset.tab === tab;
+    b.classList.toggle('is-active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+
+  hideCoverDetail();
+  shelfItems = tabItems[tab];
+  renderShelf();
+  applyShelfLayout(true);
+  updateStats();
+
+  // レイアウト確定後に保存位置（無ければ先頭）へ復元する。
+  const y = scrollByTab[tab] || 0;
+  requestAnimationFrame(() => window.scrollTo(0, y));
 }
 
 /* ---------- 棚板（各段の下のデザイン要素） ---------- */
@@ -595,10 +646,16 @@ function bindEvents() {
   // モバイル: 下スワイプでボトムシートを閉じる
   bindSheetSwipe();
 
+  // タブ切り替え（クリック / Enter・Space はボタン要素が自動で click を発火）
+  els.tabs.addEventListener('click', (e) => {
+    const btn = e.target.closest('.tab');
+    if (btn) switchTab(btn.dataset.tab);
+  });
+
   // 検索窓はダミー（送信しても何もしない）
   els.searchForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    els.stats.textContent = '検索機能は準備中です（現在は全件を所蔵館数の多い順に表示しています）。';
+    els.stats.textContent = '検索機能は準備中です（現在は所蔵館数の多い順に表示しています）。';
   });
 
   // ウィンドウ幅変化で列数が変わったら棚板を敷き直す（リサイズ確定後にだけ実行）。
@@ -619,15 +676,12 @@ async function init() {
       fetch(META_URL).then(r => r.ok ? r.json() : null).catch(() => null),
     ]);
 
-    shelfItems = buildShelfItems(books);
+    tabItems = buildShelfItems(books);
+    totalBooks = (meta && meta.total) || books.length;
+    shelfItems = tabItems[activeTab];
     renderShelf();
     applyShelfLayout(true);
-
-    const seriesCount = shelfItems.filter(isSeriesLike).length;
-    const editorialCount = shelfItems.filter(isEditorial).length;
-    const total = (meta && meta.total) || books.length;
-    els.stats.textContent =
-      `全 ${total.toLocaleString()} 件（${shelfItems.length.toLocaleString()} の棚／うちシリーズ・多巻 ${seriesCount.toLocaleString()} 件・編集書 ${editorialCount.toLocaleString()} 件）を所蔵館数順に、単著/共著を土台とし4〜8冊ごとにシリーズ・多巻と編集書を1件ずつ混ぜて配置。`;
+    updateStats();
   } catch (err) {
     els.shelf.setAttribute('aria-busy', 'false');
     els.shelf.innerHTML =
