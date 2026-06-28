@@ -142,12 +142,42 @@ def _first_contributor_role(raw):
     return _role_suffix(s)
 
 
+# 「ほか」「他」省略表記（＝著者多数の含意）の検出。これを含む寄与者表記は、
+# 筆頭の役割が「著」系でも編集書(editorial)として扱う（多数著者のまとめ＝編集書）。
+# 人名内の「他」（例「岡野他家夫」）を誤検出しないよう、"省略マーカー" として
+# 機能する位置——括弧の内容が「ほか/他」で始まる・役割語や括弧の直前にある——
+# のみを検出する。役割語は ROLE_DETECT を再利用する。
+_OTHERS_ROLE = "|".join(ROLE_DETECT)
+OTHERS_MARKER = re.compile(
+    # 括弧（[]〔〕()）の内容が「ほか」で始まる: [ほか] 〔ほか〕 (ほか) [ほか著] [ほか講演]
+    r"[〔\[(]\s*ほか[^〕\])]*[〕\])]"
+    # 括弧内が「他」単独 or 「他＋役割語」のみ: [他] [他著]（人名内「他」は対象外）
+    r"|[〔\[(]\s*他\s*(?:" + _OTHERS_ROLE + r")?\s*[〕\])]"
+    # ベタ書きの「ほか」が役割語・括弧の直前: 名ほか著 / 名ほか[著]（[…ほか執筆] も）
+    r"|ほか(?=\s*(?:" + _OTHERS_ROLE + r")|\s*[〔\[(])"
+    # ベタ書きの「他」が役割語の直前のみ: 名他著 / 名他編（「他家夫」等は役割語でないため除外）
+    r"|他(?=\s*(?:" + _OTHERS_ROLE + r"))"
+)
+
+
+def has_others_marker(group):
+    """寄与者グループに『ほか/他（＝著者多数の省略表記）』が含まれるか。
+
+    人名に偶々「他」「ほか」が含まれていても（例「岡野他家夫」）誤検出しない。
+    """
+    return bool(OTHERS_MARKER.search(group))
+
+
 def contrib_kind(raw):
     """第 1 寄与者の役割から本の種別を返す（site の棚分割に使う）。
     - "personal" : 単著/共著（第 1 寄与者が 著・共著・執筆・著者）
-    - "editorial": 編集書（それ以外。編・訳・校注・編著・編集委員 … と著者表記なし）
+    - "editorial": 編集書（それ以外。編・訳・校注・編著・編集委員 … と著者表記なし。
+                   および「ほか/他」省略表記を含むもの＝多数著者のまとめ）
     """
     if not raw or not raw.strip():
+        return "editorial"
+    # 第 1 寄与者グループに「ほか/他」省略表記があれば、筆頭役割に関わらず編集書。
+    if has_others_marker(ROLE_GROUP_SEP.split(raw.strip())[0]):
         return "editorial"
     return "personal" if _first_contributor_role(raw) in PERSONAL_ROLES else "editorial"
 
