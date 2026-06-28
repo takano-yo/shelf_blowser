@@ -376,16 +376,25 @@ a { color: var(--sky-deep); }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* 「出版社（orシリーズ名）, 出版年」を1行に。出版社側だけ縮めて ellipsis、年は常に末尾へ残す。 */
 .meta__sub {
   margin-top: 0.2rem;
   font-size: 0.76rem;
   color: var(--text);
-  white-space: nowrap;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+.meta__pub {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.meta__sub--series { color: var(--sky-deep); font-weight: 600; }
-.meta__year { color: var(--muted); }
+.meta__pub--series { color: var(--sky-deep); font-weight: 600; }
+/* 出版年は縮めない（出版社が長くても年は省略しない）。
+   将来は data-year で年ごとに色分けできる（例: .meta__year[data-year="1977"]{...}）。 */
+.meta__year { color: var(--muted); flex: none; white-space: nowrap; }
 
 /* ===== 詳細オーバーレイ ===== */
 .overlay { position: fixed; inset: 0; z-index: 50; }

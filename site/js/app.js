@@ -175,6 +175,25 @@ function coverHtml(book, label) {
     </div>`;
 }
 
+/* 表紙下メタの「出版社（orシリーズ名）, 出版年」1行を組み立てる。
+ * - pub: 出版社名 or シリーズ名（空なら出版年のみ）
+ * - isSeries: true ならシリーズ名として水色表示
+ * - year: 出版年（null なら年を出さない）
+ * pub が長い場合は ellipsis で省略し、", 出版年" は常に末尾へ残す（年は折りたたまない）。
+ * 出版年 span には data-year を付与し、将来の「年ごとの色分け」を CSS で拡張できるようにする。 */
+function subYearHtml(pub, isSeries, year) {
+  const hasYear = year != null;
+  if (!pub && !hasYear) return '';
+  const pubCls = isSeries ? 'meta__pub meta__pub--series' : 'meta__pub';
+  const pubSpan = pub ? `<span class="${pubCls}">${escapeHtml(pub)}</span>` : '';
+  // 出版社（orシリーズ名）と出版年の両方があるときだけ区切り ", " を年側に付ける。
+  const sep = (pub && hasYear) ? ', ' : '';
+  const yearSpan = hasYear
+    ? `<span class="meta__year" data-year="${escapeHtml(String(year))}">${escapeHtml(sep + year + '年')}</span>`
+    : '';
+  return `<div class="meta__sub">${pubSpan}${yearSpan}</div>`;
+}
+
 function itemHtml(item, idx) {
   const isSeries = item.type === 'series';
   const book = isSeries ? item.rep : item.book;
@@ -196,12 +215,8 @@ function itemHtml(item, idx) {
     cover = cover.replace('</div>', `<span class="cover__count">${count}冊</span></div>`);
   }
 
-  // 表紙下メタ: タイトル / 著者 / (出版社 or シリーズ名) / 出版年
-  const sub = isSeries
-    ? `<div class="meta__sub meta__sub--series">${escapeHtml(sName)}</div>`
-    : `<div class="meta__sub">${escapeHtml(publisherText(book))}</div>`;
-  const yearText = book.year != null ? `${book.year}年` : '';
-
+  // 表紙下メタ: タイトル / 著者 / 「(出版社 or シリーズ名), 出版年」を1行に集約。
+  // 出版社（orシリーズ名）が長い場合は ellipsis で省略し、出版年は常に末尾へ残す。
   return `
     <article class="${classes.join(' ')}" data-idx="${idx}" tabindex="0" role="button"
              aria-label="${escapeHtml(book.title)} の詳細を開く">
@@ -209,8 +224,7 @@ function itemHtml(item, idx) {
       <div class="meta">
         <div class="meta__title">${escapeHtml(book.title)}</div>
         <div class="meta__author">${escapeHtml(authorRawText(book))}</div>
-        ${sub}
-        ${yearText ? `<div class="meta__sub meta__year">${yearText}</div>` : ''}
+        ${subYearHtml(isSeries ? sName : publisherText(book), isSeries, book.year)}
       </div>
     </article>`;
 }
