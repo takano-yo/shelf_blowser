@@ -178,7 +178,7 @@ a { color: var(--sky-deep); }
   position: relative;
   z-index: 1;                 /* 垂直レールより前面（端の丸めがレールに重なる） */
   height: 4px;
-  margin: -0.9rem -10px 0;    /* 上の段の本へ寄せ、左右は10px外側のレールまで伸ばす */
+  margin: -0.9rem -12px 0;    /* 上の段の本へ寄せ、左右は10px外側のレールまで伸ばす */
   border-radius: 999px;       /* 両端を丸める */
   background: #ffffff;        /* 純白の細い線 */
   box-shadow: 0 2px 5px rgba(22, 50, 63, 0.32);  /* 暗めの影で目立たせる */
@@ -333,8 +333,8 @@ a { color: var(--sky-deep); }
   pointer-events: none;
   background-image:
     linear-gradient(rgba(31, 155, 196, 0.30), rgba(31, 155, 196, 0.30)),  /* 3本目（最も淡い・最上・0.7倍） */
-    linear-gradient(rgba(31, 155, 196, 0.55), rgba(31, 155, 196, 0.55)),  /* 2本目（中・0.8倍） */
-    linear-gradient(rgba(31, 155, 196, 0.90), rgba(31, 155, 196, 0.80));  /* 1本目（最も濃い・表紙側・0.9倍） */
+    linear-gradient(rgba(31, 155, 196, 0.55), rgba(31, 155, 196, 0.50)),  /* 2本目（中・0.8倍） */
+    linear-gradient(rgba(31, 155, 196, 0.90), rgba(31, 155, 196, 0.70));  /* 1本目（最も濃い・表紙側・0.9倍） */
   background-repeat: no-repeat;
   background-size: 70% 2px, 80% 2px, 90% 2px;
   /* top からの縦位置: 3本目=0 / 2本目=5px(2+3) / 1本目=10px(4+6)。下端の表紙との隙間も3px。 */
