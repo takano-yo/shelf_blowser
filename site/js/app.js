@@ -244,7 +244,7 @@ function coverHtml(book, label) {
 
 /* 表紙下メタの「出版社（orシリーズ名）, 出版年」1行を組み立てる。
  * - pub: 出版社名 or シリーズ名（空なら出版年のみ）
- * - isSeries: true ならシリーズ名として出版年と同色表示（区切りカンマも同色）
+ * - isSeries: true ならシリーズ名として出版年と同色・太字で表示（区切りカンマも同色）
  * - year: 出版年（null なら年を出さない）
  * pub が長い場合は ellipsis で省略し、", 出版年" は常に末尾へ残す（年は折りたたまない）。
  * 出版年 span には data-year を付与し、将来の「年ごとの色分け」を CSS で拡張できるようにする。 */
@@ -253,8 +253,9 @@ function subYearHtml(pub, isSeries, year) {
   if (!pub && !hasYear) return '';
   const yc = yearColors(year);
   // シリーズ名は出版年と同じ色（yc.main）で揃える。シリーズ名でない出版社名は通常色のまま。
+  const pubCls = isSeries ? 'meta__pub meta__pub--series' : 'meta__pub';
   const pubStyle = isSeries ? ` style="color:${yc.main}"` : '';
-  const pubSpan = pub ? `<span class="meta__pub"${pubStyle}>${escapeHtml(pub)}</span>` : '';
+  const pubSpan = pub ? `<span class="${pubCls}"${pubStyle}>${escapeHtml(pub)}</span>` : '';
   // 出版社（orシリーズ名）と出版年の両方があるときだけ区切り ", " を入れる。
   // シリーズ名の場合はカンマも出版年と同色に揃え、それ以外は通常の濃色（黒系）のまま。
   const sepStyle = isSeries ? ` style="color:${yc.main}"` : '';
