@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>shelf_blowser — 日本近代文学の本棚</title>
   <meta name="description" content="CiNii Books の書誌データを本棚のように並べてブラウジングする学術検索支援アプリ（試作版：日本近代文学）">
-  <link rel="stylesheet" href="css/styles.css?v=20260629a">
+  <link rel="stylesheet" href="css/styles.css?v=20260629b">
 </head>
 <body>
   <!-- ページ最上部のヘッダ（タイトル/説明）。スクロールには追随せず流れて消える。 -->
@@ -27,6 +27,16 @@
         <button class="tab" type="button" role="tab" data-tab="personal" aria-selected="false">単著/共著</button>
         <button class="tab" type="button" role="tab" data-tab="editorial" aria-selected="false">編集書</button>
         <button class="tab" type="button" role="tab" data-tab="series" aria-selected="false">シリーズ</button>
+      </div>
+      <!-- シリーズまとめ解除スイッチ。シリーズタブのときだけ表示（JS で hidden を制御）。
+           ON=シリーズでまとめる（既定）／OFF=各巻に分けて所蔵館数順に並べる。 -->
+      <div class="series-toggle" id="series-toggle" hidden>
+        <span class="series-toggle__text">シリーズでまとめる</span>
+        <label class="switch" title="オフにするとシリーズを各巻に分けて表示します">
+          <input class="switch__input" type="checkbox" id="series-group-toggle" checked
+                 aria-label="シリーズでまとめる">
+          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+        </label>
       </div>
       <!-- 並べ替え（プルダウン）。表示中タブの並び順を切り替える。 -->
       <div class="sort">
@@ -70,6 +80,6 @@
     <p>データ出典: <a href="https://support.nii.ac.jp/ja/cib/api/b_opensearch" target="_blank" rel="noopener">CiNii Books OpenSearch API</a>／表紙画像: <a href="https://openbd.jp/" target="_blank" rel="noopener">openBD</a></p>
   </footer>
 
-  <script src="js/app.js?v=20260629a" defer></script>
+  <script src="js/app.js?v=20260629b" defer></script>
 </body>
 </html>
