@@ -152,6 +152,68 @@ a { color: var(--sky-deep); }
 .sort__select:hover { background-color: var(--surface-2); }
 .sort__select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* ===== シリーズまとめ解除スイッチ ===== */
+/* シリーズタブのときだけ表示。ON=まとめる（既定）／OFF=各巻に分ける。
+ * タブ・並べ替えのピル調に合わせ、ラベル＋トグルスイッチで構成する。 */
+.series-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+}
+.series-toggle[hidden] { display: none; }
+.series-toggle__text {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* トグルスイッチ本体。チェックボックスは視覚的に隠し、トラック＋つまみで表現する。 */
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.switch__input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+}
+.switch__track {
+  display: inline-block;
+  width: 2.4rem;
+  height: 1.3rem;
+  border-radius: 999px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.switch__thumb {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  margin: 0.1rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(22, 50, 63, 0.25);
+  transition: transform 0.15s ease;
+}
+/* ON（チェック）= 水色トラック＋つまみ右寄せ。 */
+.switch__input:checked + .switch__track {
+  background: var(--sky-deep);
+  border-color: var(--sky-deep);
+}
+.switch__input:checked + .switch__track .switch__thumb {
+  transform: translateX(1.1rem);
+}
+.switch__input:focus-visible + .switch__track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* 検索窓（ダミー）。タブの右へ寄せる。 */
 .search {
   display: flex;
