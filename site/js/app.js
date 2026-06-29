@@ -30,6 +30,7 @@ const els = {
   overlayBody: document.getElementById('overlay-body'),
   searchForm: document.getElementById('search-form'),
   tabs: document.getElementById('tabs'),
+  sortSelect: document.getElementById('sort-select'),
 };
 
 // ホバー時に表紙と交代して詳細を表示する使い回しレイヤー（1個を貼り替える）。
@@ -37,9 +38,10 @@ const coverDetail = document.createElement('div');
 coverDetail.className = 'cover-detail';
 coverDetail.setAttribute('aria-hidden', 'true');
 
-let shelfItems = [];     // 現在表示中タブのアイテム（カードの data-idx の参照先）
-let tabItems = { all: [], personal: [], editorial: [], series: [] }; // タブ別アイテム集合
+let shelfItems = [];     // 現在表示中タブ＋並べ替え適用後のアイテム（カードの data-idx の参照先）
+let tabItems = { all: [], personal: [], editorial: [], series: [] }; // タブ別アイテム集合（並べ替え前の基準順）
 let activeTab = 'all';
+let sortMode = 'default'; // 並べ替えモード（default | year-asc | year-desc）。タブ切替後も保持。
 const scrollByTab = Object.create(null); // タブ -> 直近のスクロール位置（切替時に保存/復元）
 
 /* ---------- ユーティリティ ---------- */
@@ -158,6 +160,38 @@ function seriesName(item) {
   return cut || raw;
 }
 
+/* ---------- アイテムの並び替えキー ---------- */
+/* 単独本／シリーズ束を同じ規則で扱うためのアクセサ。シリーズは代表（最多所蔵）1冊を
+ * 基準にする（出版年・所蔵館数・ncid いずれも代表に揃える）。 */
+function itemOwner(it) { return it.type === 'series' ? it.maxOwner : it.book.ownerCount; }
+function itemNcid(it) { return it.type === 'series' ? it.rep.ncid : it.book.ncid; }
+function itemYear(it) { return it.type === 'series' ? it.rep.year : it.book.year; }
+
+/* 所蔵館数降順、同値は ncid 昇順（= build と同じ決定規則）。タイブレークにも使う。 */
+function byHoldings(a, b) {
+  const d = itemOwner(b) - itemOwner(a);
+  if (d) return d;
+  const na = itemNcid(a), nb = itemNcid(b);
+  return na < nb ? -1 : na > nb ? 1 : 0;
+}
+
+/* 並べ替え。base（タブ固有の基準順）から sortMode に応じた配列を返す。
+ *  - default          : 基準順そのまま（「すべて」＝混在順 / 他タブ＝所蔵館数順）
+ *  - year-asc/year-desc: 出版年の昇順／降順。シリーズは代表（rep）の年で並べる。
+ * 出版年が欠損（null）のものは昇順・降順とも末尾へ固定し、同年・両欠損は
+ * byHoldings（所蔵館数降順→ncid 昇順）で安定化する。base は破壊しない（slice）。 */
+function sortedItems(base, mode) {
+  if (mode !== 'year-asc' && mode !== 'year-desc') return base;
+  const dir = mode === 'year-asc' ? 1 : -1;
+  return base.slice().sort((a, b) => {
+    const ya = itemYear(a), yb = itemYear(b);
+    const ua = ya == null, ub = yb == null;
+    if (ua !== ub) return ua ? 1 : -1;       // 欠損年は常に末尾
+    if (!ua && ya !== yb) return (ya - yb) * dir;
+    return byHoldings(a, b);                  // 同年・両欠損のタイブレーク
+  });
+}
+
 /* ---------- データ整形（シリーズまとめ） ---------- */
 
 function buildShelfItems(books) {
@@ -189,15 +223,8 @@ function buildShelfItems(books) {
     g.maxOwner = g.rep.ownerCount;
   }
 
-  // 並び替えキー（所蔵館数降順、同値は ncid 昇順 = build と同じ決定規則）
-  const ownerOf = (it) => it.type === 'series' ? it.maxOwner : it.book.ownerCount;
-  const ncidOf = (it) => it.type === 'series' ? it.rep.ncid : it.book.ncid;
-  const byHoldings = (a, b) => {
-    const d = ownerOf(b) - ownerOf(a);
-    if (d) return d;
-    const na = ncidOf(a), nb = ncidOf(b);
-    return na < nb ? -1 : na > nb ? 1 : 0;
-  };
+  // 並び替えキー（所蔵館数降順、同値は ncid 昇順 = build と同じ決定規則）は
+  // モジュールレベルの byHoldings を共用する（並べ替え機能でも同じ規則を使うため）。
 
   // 棚は 3 種に分かれる:
   //  - 単著/共著（personal）= 土台。ブロックの残り冊を埋める主たる流れ。
@@ -385,13 +412,28 @@ function switchTab(tab) {
   });
 
   hideCoverDetail();
-  shelfItems = tabItems[tab];
+  shelfItems = sortedItems(tabItems[tab], sortMode); // 現在の並べ替えを引き継ぐ
   renderShelf();
   applyShelfLayout(true);
 
   // レイアウト確定後に保存位置（無ければ先頭）へ復元する。
   const y = scrollByTab[tab] || 0;
   requestAnimationFrame(() => window.scrollTo(0, y));
+}
+
+/* 並べ替えを切り替える。表示中タブの基準順へ新しい sortMode を適用し、棚を再描画する。
+ * 並びが変わるとスクロール位置の意味が失われるため、各タブの保存位置を破棄して
+ * 先頭へ戻す（タブ切替も以後は先頭から始まる）。 */
+function changeSort(mode) {
+  if (mode === sortMode) return;
+  sortMode = mode;
+  Object.keys(scrollByTab).forEach((k) => delete scrollByTab[k]);
+
+  hideCoverDetail();
+  shelfItems = sortedItems(tabItems[activeTab], sortMode);
+  renderShelf();
+  applyShelfLayout(true);
+  window.scrollTo(0, 0);
 }
 
 /* ---------- 棚板（各段の下のデザイン要素） ---------- */
@@ -650,6 +692,11 @@ function bindEvents() {
     if (btn) switchTab(btn.dataset.tab);
   });
 
+  // 並べ替え（プルダウン）
+  if (els.sortSelect) {
+    els.sortSelect.addEventListener('change', (e) => changeSort(e.target.value));
+  }
+
   // 検索窓はダミー（送信しても何もしない）
   els.searchForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -672,7 +719,7 @@ async function init() {
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
 
     tabItems = buildShelfItems(books);
-    shelfItems = tabItems[activeTab];
+    shelfItems = sortedItems(tabItems[activeTab], sortMode);
     renderShelf();
     applyShelfLayout(true);
   } catch (err) {

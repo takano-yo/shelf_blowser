@@ -115,6 +115,43 @@ a { color: var(--sky-deep); }
   border-color: var(--sky-deep);
 }
 
+/* ===== 並べ替え（プルダウン） ===== */
+/* タブと検索窓の間に置く。タブのピル調に合わせた丸枠の select。 */
+.sort {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+}
+.sort__label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.sort__select {
+  padding: 0.4rem 1.9rem 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  background-color: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  /* ネイティブの矢印を消し、独自の▾（muted 色）を右端に描く。 */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%235f7a88' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  background-size: 0.65rem;
+  transition: color 0.12s ease, background-color 0.12s ease, border-color 0.12s ease;
+}
+.sort__select:hover { background-color: var(--surface-2); }
+.sort__select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* 検索窓（ダミー）。タブの右へ寄せる。 */
 .search {
   display: flex;
