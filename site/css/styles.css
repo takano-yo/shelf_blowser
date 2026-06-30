@@ -121,6 +121,8 @@ a { color: var(--sky-deep); }
   border-color: var(--line) var(--line) var(--bg) var(--line);
   box-shadow: inset 0 2px 0 var(--sky-deep);
   z-index: 1;
+  /* 上辺だけ8px上にずらして拡大（.tabs が flex-end のため下・左・右辺の位置は変わらない） */
+  padding-top: calc(0.45rem + 8px);
 }
 
 /* ===== 並べ替え（プルダウン） ===== */
