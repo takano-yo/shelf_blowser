@@ -96,6 +96,7 @@ a { color: var(--sky-deep); }
   align-self: flex-end;
   gap: 0.2rem;
   flex: 0 1 auto;
+  order: 0;
   position: relative;
   margin-bottom: calc(-0.61rem + 5px); /* .searchbar__inner の下パディング分を相殺し、枠線へ密着させる */
 }
@@ -134,6 +135,7 @@ a { color: var(--sky-deep); }
   align-items: center;
   gap: 0.4rem;
   flex: 0 0 auto;
+  order: 1;
 }
 .sort__label {
   font-size: 0.8rem;
@@ -174,6 +176,9 @@ a { color: var(--sky-deep); }
   align-items: center;
   gap: 0.45rem;
   flex: 0 0 auto;
+  /* タブ・並べ替え・検索窓より後ろに置く。1行に入り切らないときはスイッチだけが
+     追加の1行として折り返す（タブ・並べ替え・検索窓の1行は崩さない）。 */
+  order: 3;
 }
 .series-toggle[hidden] { display: none; }
 .series-toggle__text {
@@ -237,6 +242,7 @@ a { color: var(--sky-deep); }
   min-width: 0;
   max-width: 30rem;
   margin-left: auto;
+  order: 2;
 }
 
 .search__input {
@@ -270,6 +276,41 @@ a { color: var(--sky-deep); }
   cursor: pointer;
 }
 .search__button:hover { background: var(--accent-deep); }
+
+/* ===== 検索バー: コンパクト表示 =====
+ * タブ・並べ替え・検索窓（スイッチを除く主要3要素）が1行に収まるかどうかは
+ * ビューポート幅では判定できない（タブの本数や文言で必要幅が変わるため）。
+ * JS（updateToolbarLayout）が実測し、収まらないときだけ .searchbar__inner に
+ * .searchbar--compact を付与してモバイル型の2段組みへ切り替える。
+ * 上段＝検索窓（全幅）／下段＝タブ切り替え＋並べ替えを1行に収める。
+ * シリーズトグルはシリーズタブでのみ現れる条件付き要素なので最後に置き、
+ * 収まらない場合はトグルだけが次行へ折り返す（タブ＋並べ替えの行は崩さない）。 */
+.searchbar__inner.searchbar--compact {
+  gap: 0.55rem 0.55rem;
+}
+.searchbar--compact .search {
+  order: 0;
+  flex-basis: 100%;
+  margin-left: 0;
+  max-width: none;
+}
+.searchbar--compact .tabs {
+  order: 1;
+  /* flex-basis を 0 にして折り返し判定上のタブ幅を 0 扱いにし、並べ替えと必ず
+     同一行へ収める。実幅は余白いっぱいまで伸び、入り切らないタブは中身が
+     はみ出してタブエリア内で横スクロールする。 */
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.searchbar--compact .tabs::-webkit-scrollbar { display: none; }
+.searchbar--compact .sort { order: 2; flex: 0 0 auto; }
+/* コンパクト表示はラベル文字を非表示にし、その分タブ切り替えボタンの表示領域を広げる。
+   見出しはプルダウン展開時に optgroup（JS で付与）として先頭に表示する。 */
+.searchbar--compact .sort__label { display: none; }
+.searchbar--compact .series-toggle { order: 3; flex: 0 0 auto; }
 
 /* ===== 本棚 ===== */
 .shelf-wrap {
@@ -636,43 +677,6 @@ a { color: var(--sky-deep); }
   .shelf { gap: 1.25rem 0.85rem; }
   .site-header__bar { gap: 0.6rem; }
 
-  /* モバイルは検索バーを縦2段に分ける。
-     上段＝検索窓（全幅）／下段＝タブ切り替え＋並べ替えを1行に収める。
-     DOM順は「タブ→トグル→並べ替え→検索窓」のまま、order で表示順だけ入れ替える
-     （PC版＝全て1行に収まる幅では order が効かず現状の並びを維持）。 */
-  .searchbar__inner { gap: 0.55rem 0.55rem; }
-
-  /* 上段: 検索窓を最上部へ全幅で配置。 */
-  .search {
-    order: 0;
-    flex-basis: 100%;
-    margin-left: 0;
-    max-width: none;
-  }
-
-  /* 下段: タブは伸縮し、入り切らない分はタブエリア内だけ横スクロール
-     （常に全タブを表示しなくてよい。折り返さない）。 */
-  .tabs {
-    order: 1;
-    /* flex-basis を 0 にして折り返し判定上のタブ幅を 0 扱いにし、並べ替えと必ず
-       同一行へ収める。実幅は余白いっぱいまで伸び、入り切らないタブは中身が
-       はみ出してタブエリア内で横スクロールする。 */
-    flex: 1 1 0;
-    min-width: 0;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-  .tabs::-webkit-scrollbar { display: none; }
-
-  /* 並べ替えは縮めず固定幅でタブの右隣へ（タブ＋並べ替えを必ず同一行に保つ）。
-     シリーズトグルはシリーズタブでのみ現れる条件付き要素なので最後に置き、
-     収まらない場合はトグルだけが次行へ折り返す（タブ＋並べ替えの行は崩さない）。 */
-  .sort { order: 2; flex: 0 0 auto; }
-  /* モバイルはラベル文字を非表示にし、その分タブ切り替えボタンの表示領域を広げる。
-     見出しはプルダウン展開時に optgroup（JS で付与）として先頭に表示する。 */
-  .sort__label { display: none; }
-  .series-toggle { order: 3; flex: 0 0 auto; }
   /* モバイルは詳細をボトムシート化 */
   .overlay__panel {
     top: auto;

@@ -28,8 +28,10 @@ const els = {
   loading: document.getElementById('shelf-loading'),
   overlay: document.getElementById('overlay'),
   overlayBody: document.getElementById('overlay-body'),
+  searchbarInner: document.querySelector('.searchbar__inner'),
   searchForm: document.getElementById('search-form'),
   tabs: document.getElementById('tabs'),
+  sort: document.querySelector('.sort'),
   sortSelect: document.getElementById('sort-select'),
   seriesToggle: document.getElementById('series-toggle'),
   groupToggle: document.getElementById('series-group-toggle'),
@@ -652,15 +654,40 @@ function closeOverlay() {
   if (lastFocused && lastFocused.focus) lastFocused.focus();
 }
 
-// モバイル表示のみ、並べ替えプルダウンを展開したときに先頭へ選択不可の見出し
+// 縦方向に重なりがあれば同じ折り返し行とみなす（align-items の違いで
+// offsetTop が数px ずれる要素同士でも、行が分かれていなければ重なりが残る。
+// 折り返しで別行になった場合は重なりが無くなる）。
+function verticallyOverlaps(a, b) {
+  const ra = a.getBoundingClientRect();
+  const rb = b.getBoundingClientRect();
+  return ra.top < rb.bottom && rb.top < ra.bottom;
+}
+
+// 検索バーの PC/モバイル表示切り替え。
+// タブ・並べ替え・検索窓（シリーズトグルを除く主要3要素）がビューポート幅に
+// よらず1行に収まるかどうかを実測し、収まらないときだけ .searchbar__inner に
+// .searchbar--compact を付与してモバイル型の2段組みへ切り替える。
+// シリーズトグルは例外として判定対象に含めない（トグルだけが次行へ折り返すのは許容）。
+function updateToolbarLayout() {
+  const inner = els.searchbarInner;
+  if (!inner || !els.tabs || !els.searchForm) return;
+  // PC版の並びで実測するため、既にコンパクト表示なら一旦解除してから測る。
+  inner.classList.remove('searchbar--compact');
+  const fitsOneLine =
+    (!els.sort || verticallyOverlaps(els.tabs, els.sort)) &&
+    verticallyOverlaps(els.tabs, els.searchForm);
+  inner.classList.toggle('searchbar--compact', !fitsOneLine);
+}
+
+// コンパクト表示のみ、並べ替えプルダウンを展開したときに先頭へ選択不可の見出し
 // 「並べ替え」を表示する（閉じた状態の表示＝選択中の値には影響しない）。
-// デスクトップでは付与せず、ラベル表示の現状を維持する。
+// 通常表示では付与せず、ラベル表示の現状を維持する。
 function syncSortHeadingOption() {
   const select = els.sortSelect;
   if (!select) return;
-  const isMobile = window.matchMedia('(max-width: 600px)').matches;
+  const isCompact = !!(els.searchbarInner && els.searchbarInner.classList.contains('searchbar--compact'));
   const group = select.querySelector('optgroup[data-sort-heading]');
-  if (isMobile && !group) {
+  if (isCompact && !group) {
     // option を一旦 select から切り離して移すと、再接続時に選択状態が崩れる
     // （末尾の option が選ばれてしまう）ブラウザ挙動があるため、選択中の値を
     // 退避しておき、移し替え後に明示的に復元する。
@@ -671,7 +698,7 @@ function syncSortHeadingOption() {
     while (select.firstChild) og.appendChild(select.firstChild);
     select.appendChild(og);
     select.value = current;
-  } else if (!isMobile && group) {
+  } else if (!isCompact && group) {
     const current = select.value;
     while (group.firstChild) select.appendChild(group.firstChild);
     group.remove();
@@ -792,6 +819,7 @@ function bindEvents() {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       applyShelfLayout(false);
+      updateToolbarLayout();
       syncSortHeadingOption();
     }, 120);
   });
@@ -801,6 +829,7 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
+  updateToolbarLayout();
   syncSortHeadingOption();
   try {
     const books = await fetch(DATA_URL)
