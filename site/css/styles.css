@@ -669,6 +669,9 @@ a { color: var(--sky-deep); }
      シリーズトグルはシリーズタブでのみ現れる条件付き要素なので最後に置き、
      収まらない場合はトグルだけが次行へ折り返す（タブ＋並べ替えの行は崩さない）。 */
   .sort { order: 2; flex: 0 0 auto; }
+  /* モバイルはラベル文字を非表示にし、その分タブ切り替えボタンの表示領域を広げる。
+     見出しはプルダウン展開時に optgroup（JS で付与）として先頭に表示する。 */
+  .sort__label { display: none; }
   .series-toggle { order: 3; flex: 0 0 auto; }
   /* モバイルは詳細をボトムシート化 */
   .overlay__panel {

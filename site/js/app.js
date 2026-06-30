@@ -652,6 +652,33 @@ function closeOverlay() {
   if (lastFocused && lastFocused.focus) lastFocused.focus();
 }
 
+// モバイル表示のみ、並べ替えプルダウンを展開したときに先頭へ選択不可の見出し
+// 「並べ替え」を表示する（閉じた状態の表示＝選択中の値には影響しない）。
+// デスクトップでは付与せず、ラベル表示の現状を維持する。
+function syncSortHeadingOption() {
+  const select = els.sortSelect;
+  if (!select) return;
+  const isMobile = window.matchMedia('(max-width: 600px)').matches;
+  const group = select.querySelector('optgroup[data-sort-heading]');
+  if (isMobile && !group) {
+    // option を一旦 select から切り離して移すと、再接続時に選択状態が崩れる
+    // （末尾の option が選ばれてしまう）ブラウザ挙動があるため、選択中の値を
+    // 退避しておき、移し替え後に明示的に復元する。
+    const current = select.value;
+    const og = document.createElement('optgroup');
+    og.label = '並べ替え';
+    og.dataset.sortHeading = 'true';
+    while (select.firstChild) og.appendChild(select.firstChild);
+    select.appendChild(og);
+    select.value = current;
+  } else if (!isMobile && group) {
+    const current = select.value;
+    while (group.firstChild) select.appendChild(group.firstChild);
+    group.remove();
+    select.value = current;
+  }
+}
+
 // モバイルのボトムシートを下スワイプ（先頭までスクロール済みでの下方向ドラッグ）で
 // 閉じられるようにする。内容が途中までスクロールされている間は通常スクロールを優先。
 function bindSheetSwipe() {
@@ -763,7 +790,10 @@ function bindEvents() {
   let resizeTimer;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => applyShelfLayout(false), 120);
+    resizeTimer = setTimeout(() => {
+      applyShelfLayout(false);
+      syncSortHeadingOption();
+    }, 120);
   });
 }
 
@@ -771,6 +801,7 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
+  syncSortHeadingOption();
   try {
     const books = await fetch(DATA_URL)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
