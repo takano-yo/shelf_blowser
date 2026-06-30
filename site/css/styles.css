@@ -100,7 +100,7 @@ a { color: var(--sky-deep); }
   margin-bottom: -0.61rem; /* .searchbar__inner の下パディング分を相殺し、枠線へ密着させる */
 }
 .tab {
-  padding: calc(0.45rem + 8px) 0.9rem 0.55rem;
+  padding: 0.45rem 0.9rem calc(0.55rem + 8px);
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--muted);
