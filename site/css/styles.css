@@ -89,30 +89,38 @@ a { color: var(--sky-deep); }
 }
 
 /* ===== 表示切り替えタブ ===== */
+/* 検索バー下端の枠線に密着させ、選択中タブだけページ（本棚）と地続きに見せるフォルダ型タブ。 */
 .tabs {
   display: flex;
-  align-items: center;
-  gap: 0.35rem;
+  align-items: flex-end;
+  align-self: flex-end;
+  gap: 0.2rem;
   flex: 0 1 auto;
+  position: relative;
+  margin-bottom: -0.61rem; /* .searchbar__inner の下パディング分を相殺し、枠線へ密着させる */
 }
 .tab {
-  padding: 0.4rem 0.85rem;
+  padding: 0.45rem 0.9rem 0.55rem;
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--muted);
-  background: var(--surface);
+  background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-bottom-color: transparent;
+  border-radius: 8px 8px 0 0;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  position: relative;
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
-.tab:hover { color: var(--text); background: var(--surface-2); }
+.tab:hover { color: var(--text); background: var(--surface); }
 .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tab.is-active {
-  color: #fff;
-  background: var(--sky-deep);
-  border-color: var(--sky-deep);
+  color: var(--sky-deep);
+  background: var(--bg);
+  border-color: var(--line) var(--line) var(--bg) var(--line);
+  box-shadow: inset 0 2px 0 var(--sky-deep);
+  z-index: 1;
 }
 
 /* ===== 並べ替え（プルダウン） ===== */
