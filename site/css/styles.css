@@ -81,7 +81,7 @@ a { color: var(--sky-deep); }
 .searchbar__inner {
   max-width: 88rem;
   margin: 0 auto;
-  padding: 0.6rem 1.25rem;
+  padding: calc(0.6rem - 5px) 1.25rem;
   display: flex;
   align-items: center;
   gap: 0.5rem 1rem;
@@ -97,10 +97,10 @@ a { color: var(--sky-deep); }
   gap: 0.2rem;
   flex: 0 1 auto;
   position: relative;
-  margin-bottom: -0.61rem; /* .searchbar__inner の下パディング分を相殺し、枠線へ密着させる */
+  margin-bottom: calc(-0.61rem + 5px); /* .searchbar__inner の下パディング分を相殺し、枠線へ密着させる */
 }
 .tab {
-  padding: 0.45rem 0.9rem calc(0.55rem + 8px);
+  padding: 0.45rem 0.9rem calc(0.55rem + 3px);
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--muted);
