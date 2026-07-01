@@ -25,11 +25,12 @@ OPENSEARCH_ENDPOINT = "https://ci.nii.ac.jp/books/opensearch/search"
 USER_AGENT = "shelf_blowser/0.1 (+https://github.com/takano-yo/shelf_blowser)"
 
 
-def build_opensearch_url(query, count=200, sortorder=5):
+def build_opensearch_url(query, count=10000, sortorder=5):
     """CiNii OpenSearch のリクエスト URL を組み立てる。
 
     sortorder=5 は所蔵館数（ownerCount）降順。source/*.json と同じ条件に揃える。
-    count は動的検索では控えめ（既定 200）にし、ペイロードとサーバ負荷を抑える。
+    count も source/*.json の生成時と同じ 10000（CiNii が実際に持つ件数までしか
+    返らないため、実質「その検索語の全件」を一度の取得で狙う値）に揃える。
     """
     params = {
         "q": query,
@@ -51,7 +52,7 @@ def items_from_response(data):
     return graph.get("items") or []
 
 
-def fetch_live(query, count=200, sortorder=5, timeout=30, retries=4):
+def fetch_live(query, count=10000, sortorder=5, timeout=30, retries=4):
     """CiNii OpenSearch を実際に取得して items 配列を返す（本番経路）。
 
     マナー: 明示的 UA を付け、一時エラーは指数バックオフで再試行する。
@@ -85,7 +86,7 @@ def _item_haystack(item):
     return " ".join(parts)
 
 
-def search_local(source_path, query, count=200):
+def search_local(source_path, query, count=10000):
     """保存済み OpenSearch JSON を読み、query（空白区切り AND）で items を絞り込む。
 
     CiNii に到達できない環境での動的パイプライン検証・フォールバック用。

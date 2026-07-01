@@ -44,7 +44,7 @@ DEFAULT_SOURCE = ROOT / "source" / "日本近代文学.json"
 CONFIG = {
     "live": False,          # True: CiNii を叩く / False: ローカル source を絞り込む
     "source": DEFAULT_SOURCE,
-    "count": 200,
+    "count": 10000,         # build（source/*.json 生成）と同じ既定値。検索語の全件取得を狙う
     "cache_ttl": 3600,      # 秒。キャッシュの有効期限（0 で無期限）
 }
 
@@ -127,7 +127,7 @@ class Handler(BaseHTTPRequestHandler):
         qs = parse_qs(parsed.query)
         query = (qs.get("q", [""])[0]).strip()
         try:
-            count = min(int(qs.get("count", [CONFIG["count"]])[0]), 1000)
+            count = min(int(qs.get("count", [CONFIG["count"]])[0]), 10000)
         except ValueError:
             count = CONFIG["count"]
         try:
@@ -192,7 +192,7 @@ def main(argv=None):
                    help="CiNii OpenSearch を実際に叩く（既定はローカル source 絞り込み）")
     p.add_argument("--source", default=str(DEFAULT_SOURCE),
                    help="ローカル取得に使う OpenSearch JSON")
-    p.add_argument("--count", type=int, default=200, help="1 検索あたりの既定取得件数")
+    p.add_argument("--count", type=int, default=10000, help="1 検索あたりの既定取得件数")
     p.add_argument("--cache-ttl", type=int, default=3600,
                    help="結果キャッシュの有効期限（秒・0 で無期限）")
     args = p.parse_args(argv)
