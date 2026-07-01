@@ -47,13 +47,14 @@
           <option value="year-desc">出版年：新しい順</option>
         </select>
       </div>
-      <!-- 検索窓（現フェーズはダミー）。タブの右へ寄せる。 -->
-      <form class="search" id="search-form" role="search" aria-label="書誌検索（準備中）">
+      <!-- 検索窓。入力語で API（server/app.py）を叩き、CiNii OpenSearch を取得して
+           本棚を作り直す。空送信で既定データ（data/books.json）へ戻る。 -->
+      <form class="search" id="search-form" role="search" aria-label="書誌検索">
         <input
           class="search__input"
           id="search-input"
           type="search"
-          placeholder="タイトル・著者・出版社で検索（準備中）"
+          placeholder="キーワードで検索（例: 漱石 小説）"
           aria-label="検索キーワード"
           autocomplete="off">
         <button class="search__button" type="submit" aria-label="検索">検索</button>

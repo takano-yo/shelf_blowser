@@ -4,6 +4,10 @@
 build/README.md の要件定義に対応した実装。
 処理フロー: load → normalize → (enrich: 表紙) → sort → write
 
+正規化ロジックは core/normalize.py に集約し、API サーバ（server/）と共有する。
+このスクリプトは既定キーワードの「事前ビルド（バッチ）」を担い、生成物
+site/data/books.json は動的検索が使えないときのフォールバック表示にも使われる。
+
 標準ライブラリのみで動作する（表紙取得 --covers 時のみ urllib でネットワークを使う）。
 """
 
@@ -12,252 +16,13 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
-import re
 import sys
 import time
 from pathlib import Path
 
-# --- 著者正規化に使う役割語（長いものから順に末尾除去する） ---
-ROLE_WORDS = [
-    "注釈", "訳注", "編訳", "解題", "編著", "共著", "編纂", "校訂",
-    "監修", "校注", "校閲", "解説", "編集",
-    "述", "著", "編", "訳", "注", "画", "撰",
-]
-# 著者の区切り（半角空白は姓名間にも現れるため区切りに使わない）。
-# " . "（前後空白付きのピリオド）は CiNii の合冊（複数著作）区切り。
-CREATOR_SEP = re.compile(r"[;；,，、/]|\s+\.\s+")
-# 役割語の間に現れる連結記号・末尾の句読点（"校注・訳" の "・" など）
-TRAIL_PUNCT = " 　・･·／/.．,，、;；"
-# 角括弧注記（[ほか] / [著] など）を除去
-BRACKET = re.compile(r"\[[^\]]*\]")
-# 先頭の連続数字
-LEADING_DIGITS = re.compile(r"^(\d+)")
-
-
-def ncid_from_uri(uri: str) -> str:
-    """URI の末尾セグメントを NCID として返す。"""
-    return uri.rstrip("/").rsplit("/", 1)[-1]
-
-
-def parse_year_decade(date_str):
-    """dc:date から (year, decade) を求める。
-
-    - 完全 4 桁  -> (year, decade)
-    - 3 桁確定   -> (None, decade)   例 "197-" → 1970 年代
-    - それ未満   -> (None, None)     例 "19--", "1---", 欠損
-    """
-    if not date_str:
-        return None, None
-    m = LEADING_DIGITS.match(date_str.strip())
-    if not m:
-        return None, None
-    digits = m.group(1)
-    if len(digits) >= 4:
-        year = int(digits[:4])
-        return year, year // 10 * 10
-    if len(digits) == 3:
-        return None, int(digits) * 10
-    return None, None
-
-
-def normalize_creators(raw):
-    """dc:creator 文字列を人名配列へ軽く正規化する（暫定精度）。
-
-    役割語・角括弧注記を除き、区切りで分割する。完璧な分割は目指さない。
-    """
-    if not raw:
-        return []
-    out = []
-    for part in CREATOR_SEP.split(raw):
-        name = BRACKET.sub("", part).strip()
-        if not name:
-            continue
-        # 末尾の役割語と連結記号を繰り返し除去（"校注・訳" 等にも対応）
-        while True:
-            new = name.rstrip(TRAIL_PUNCT)
-            for role in ROLE_WORDS:
-                if new.endswith(role) and len(new) > len(role):
-                    new = new[: -len(role)]
-                    break
-            if new == name:
-                break
-            name = new
-        # 「ほか」だけ、あるいは省略表記は人名として残さない
-        name = name.rstrip()
-        if name in ("", "ほか"):
-            continue
-        if name.endswith("ほか"):
-            name = name[:-2].strip()
-        if name and name != "ほか" and name not in ROLE_WORDS:
-            out.append(name)
-    return out
-
-
-# --- 寄与者の種別判定（単著/共著 ⇔ 編集書）に使う ---
-# 第 1 寄与者の役割が「著・共著・執筆・著者」なら単著/共著、それ以外（編・訳・校注・
-# 編著・編集委員 …）および著者表記なし（creatorRaw が空）は編集書とする。
-# 「編著」を「著」と誤認しないよう、役割語は長いものから最長一致で取り出す。
-PERSONAL_ROLES = {"著", "共著", "執筆", "著者"}
-# 役割語の検出辞書（最長一致・決定的順）。著で終わるが単著でない「編著」等を優先一致。
-ROLE_DETECT = sorted(
-    set(ROLE_WORDS) | {"執筆", "著者", "編集委員", "責任編集", "編集協力"},
-    key=lambda r: (-len(r), r),
-)
-# 役割グループ（別の役割の寄与者）の区切り。" ; " と " . "。
-# 同一役割の共著者を並べる "," は区切らない（末尾にまとめて属性が付くため）。
-ROLE_GROUP_SEP = re.compile(r"\s*;\s*|\s+\.\s+")
-# 先頭に属性が来る表記（"[著者] 宮本正人" など）。
-LEADING_ROLE = re.compile(r"^\[?\s*(著者|著|執筆|共著)\s*\]?[\s　]")
-
-
-def _role_suffix(s):
-    """文字列末尾の役割語を最長一致で返す（無ければ ""）。"""
-    s = s.strip().rstrip(TRAIL_PUNCT)
-    for role in ROLE_DETECT:
-        if s.endswith(role):
-            return role
-    return ""
-
-
-def _first_contributor_role(raw):
-    """creatorRaw の第 1 寄与者の役割語を取り出す。
-    複数名が "," で並びまとめて属性が付くケース・角括弧表記（[著]/[ほか編集]/
-    [ほか]著）・先頭属性（[著者] 名）に対応する。"""
-    group = ROLE_GROUP_SEP.split(raw.strip())[0].strip()
-    m = LEADING_ROLE.match(group)
-    if m:
-        return m.group(1)
-    s = group
-    # 末尾の角括弧内に役割があれば優先（[著]/[ほか編集]）。
-    # 「ほか」等のみの括弧は捨て、その外側の役割（[ほか]著）を探す。
-    for _ in range(4):
-        s = s.rstrip(TRAIL_PUNCT)
-        mb = re.search(r"\[([^\]]*)\]$", s)
-        if not mb:
-            break
-        role = _role_suffix(mb.group(1))
-        if role:
-            return role
-        s = s[: mb.start()]
-    return _role_suffix(s)
-
-
-# 「ほか」「他」省略表記（＝著者多数の含意）の検出。これを含む寄与者表記は、
-# 筆頭の役割が「著」系でも編集書(editorial)として扱う（多数著者のまとめ＝編集書）。
-# 人名内の「他」（例「岡野他家夫」）を誤検出しないよう、"省略マーカー" として
-# 機能する位置——括弧の内容が「ほか/他」で始まる・役割語や括弧の直前にある——
-# のみを検出する。役割語は ROLE_DETECT を再利用する。
-_OTHERS_ROLE = "|".join(ROLE_DETECT)
-OTHERS_MARKER = re.compile(
-    # 括弧（[]〔〕()）の内容が「ほか」で始まる: [ほか] 〔ほか〕 (ほか) [ほか著] [ほか講演]
-    r"[〔\[(]\s*ほか[^〕\])]*[〕\])]"
-    # 括弧内が「他」単独 or 「他＋役割語」のみ: [他] [他著]（人名内「他」は対象外）
-    r"|[〔\[(]\s*他\s*(?:" + _OTHERS_ROLE + r")?\s*[〕\])]"
-    # ベタ書きの「ほか」が役割語・括弧の直前: 名ほか著 / 名ほか[著]（[…ほか執筆] も）
-    r"|ほか(?=\s*(?:" + _OTHERS_ROLE + r")|\s*[〔\[(])"
-    # ベタ書きの「他」が役割語の直前のみ: 名他著 / 名他編（「他家夫」等は役割語でないため除外）
-    r"|他(?=\s*(?:" + _OTHERS_ROLE + r"))"
-)
-
-
-def has_others_marker(group):
-    """寄与者グループに『ほか/他（＝著者多数の省略表記）』が含まれるか。
-
-    人名に偶々「他」「ほか」が含まれていても（例「岡野他家夫」）誤検出しない。
-    """
-    return bool(OTHERS_MARKER.search(group))
-
-
-def _first_authorship_segment(group):
-    """第 1 役割グループから『第 1 寄与者の著系役割が完結するまで』を切り出す。
-
-    著系役割語（著・共著・執筆・著者）が最初に現れる位置までを第 1 寄与者の
-    著者表記とみなす。これにより、第 1 寄与者が著で完結した後ろに続く別寄与者
-    （`◯◯著, ◯◯ほか編` のように同一グループ内でも）の「ほか/他」を、第 1 寄与者
-    の省略表記と取り違えない。著系役割が無ければグループ全体を返す。
-    """
-    roles = sorted(PERSONAL_ROLES, key=len, reverse=True)
-    for i in range(len(group)):
-        for role in roles:
-            if group.startswith(role, i):
-                return group[: i + len(role)]
-    return group
-
-
-def contrib_kind(raw):
-    """第 1 寄与者の役割から本の種別を返す（site の棚分割に使う）。
-    - "personal" : 単著/共著（第 1 寄与者が 著・共著・執筆・著者）
-    - "editorial": 編集書（それ以外。編・訳・校注・編著・編集委員 … と著者表記なし。
-                   および第 1 寄与者『自身』が「ほか/他」省略表記を含むもの）
-    """
-    if not raw or not raw.strip():
-        return "editorial"
-    first_group = ROLE_GROUP_SEP.split(raw.strip())[0]
-    # 第 1 寄与者の役割が著系でなければ編集書。
-    if _first_contributor_role(raw) not in PERSONAL_ROLES:
-        return "editorial"
-    # 第 1 寄与者が著系 → 原則 personal。ただし第 1 寄与者『自身』が「ほか/他」
-    # （著者多数の省略）を含むなら editorial（例: `◯◯ほか著`）。著系役割が完結した
-    # 後ろに続く別寄与者の「ほか/他」では editorial にしない
-    # （例: `◯◯著 ; ◯◯ほか編` は personal）。
-    seg = _first_authorship_segment(first_group)
-    return "editorial" if has_others_marker(seg) else "personal"
-
-
-def extract_isbn(has_part):
-    """dcterms:hasPart から urn:isbn: のみを採用し接頭辞を除く（ISSN は除外）。"""
-    isbns = []
-    for el in has_part or []:
-        uri = el.get("@id", "")
-        if uri.startswith("urn:isbn:"):
-            isbns.append(uri[len("urn:isbn:"):])
-    return isbns
-
-
-def extract_series(is_part_of):
-    """dcterms:isPartOf を [{id, title}] へ。親 NCID を保持する。"""
-    series = []
-    for el in is_part_of or []:
-        uri = el.get("@id", "")
-        series.append({
-            "id": ncid_from_uri(uri) if uri else None,
-            "title": el.get("dc:title"),
-        })
-    return series
-
-
-def normalize_item(item):
-    """source の 1 item を books レコードへ変換する。"""
-    uri = item.get("@id", "")
-    ncid = ncid_from_uri(uri)
-    link = item.get("link") or {}
-    cinii_url = link.get("@id") or (
-        f"https://ci.nii.ac.jp/ncid/{ncid}" if ncid else None
-    )
-
-    try:
-        owner_count = int(item.get("cinii:ownerCount", "0"))
-    except (TypeError, ValueError):
-        owner_count = 0
-
-    year, decade = parse_year_decade(item.get("dc:date"))
-    raw_creator = item.get("dc:creator")
-
-    return {
-        "ncid": ncid,
-        "title": (item.get("title") or "").strip(),
-        "creators": normalize_creators(raw_creator),
-        "creatorRaw": raw_creator,
-        "contribKind": contrib_kind(raw_creator),
-        "publishers": list(item.get("dc:publisher") or []),
-        "year": year,
-        "decade": decade,
-        "ownerCount": owner_count,
-        "series": extract_series(item.get("dcterms:isPartOf")),
-        "isbn": extract_isbn(item.get("dcterms:hasPart")),
-        "ciniiUrl": cinii_url,
-        "coverUrl": None,
-    }
+# リポジトリ直下を import パスへ追加し、core を共有モジュールとして読む。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from core.normalize import normalize_item  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +39,6 @@ def enrich_covers(records, cache_dir, batch=100, retries=4):
     ネットワークは本関数内に閉じ込める（標準ライブラリ urllib）。
     """
     import urllib.parse
-    import urllib.request
 
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
