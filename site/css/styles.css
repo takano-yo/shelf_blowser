@@ -135,7 +135,7 @@ a { color: var(--sky-deep); }
   align-items: center;
   gap: 0.4rem;
   flex: 0 0 auto;
-  order: 1;
+  order: 2;
 }
 .sort__label {
   font-size: 0.8rem;
@@ -176,9 +176,8 @@ a { color: var(--sky-deep); }
   align-items: center;
   gap: 0.45rem;
   flex: 0 0 auto;
-  /* タブ・並べ替え・検索窓より後ろに置く。1行に入り切らないときはスイッチだけが
-     追加の1行として折り返す（タブ・並べ替え・検索窓の1行は崩さない）。 */
-  order: 3;
+  /* PC表示では並べ替えボタンのすぐ左に置く（検索窓は右端に固定）。 */
+  order: 1;
 }
 .series-toggle[hidden] { display: none; }
 .series-toggle__text {
@@ -242,7 +241,7 @@ a { color: var(--sky-deep); }
   min-width: 0;
   max-width: 30rem;
   margin-left: auto;
-  order: 2;
+  order: 3;
 }
 
 .search__input {
