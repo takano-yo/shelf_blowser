@@ -342,6 +342,11 @@ a { color: var(--sky-deep); }
 .shelf::before { left: -10px; }
 .shelf::after { right: -10px; }
 
+/* 無限スクロール用の監視要素。見た目は持たず、IntersectionObserver の発火点にのみ使う。 */
+.shelf-sentinel {
+  height: 1px;
+}
+
 .shelf__loading,
 .shelf__empty {
   grid-column: 1 / -1;

@@ -28,9 +28,15 @@ const MIX_GAP_MIN = 4; // 1 ブロックの総冊数の下限
 const MIX_GAP_MAX = 8; // 同・上限
 const MIX_SEED = 0x9e3779b9;
 
+// 無限スクロールの1ページあたりの件数。初回表示・タブ切替・並べ替え・検索後は
+// 常に先頭からこの件数だけ描画し、センチネル（画面下の監視要素）が見えるたびに
+// 次の PAGE_SIZE 件を追加描画する。
+const PAGE_SIZE = 100;
+
 const els = {
   shelf: document.getElementById('shelf'),
   loading: document.getElementById('shelf-loading'),
+  sentinel: document.getElementById('shelf-sentinel'),
   overlay: document.getElementById('overlay'),
   overlayBody: document.getElementById('overlay-body'),
   searchbarInner: document.querySelector('.searchbar__inner'),
@@ -49,6 +55,7 @@ coverDetail.className = 'cover-detail';
 coverDetail.setAttribute('aria-hidden', 'true');
 
 let shelfItems = [];     // 現在表示中タブ＋並べ替え適用後のアイテム（カードの data-idx の参照先）
+let renderedCount = 0;   // shelfItems のうち現在 DOM に描画済みの件数（先頭からの累積）
 let tabItems = { all: [], personal: [], editorial: [], series: [] }; // タブ別アイテム集合（並べ替え前の基準順）
 let activeTab = 'all';
 let sortMode = 'default'; // 並べ替えモード（default | year-asc | year-desc）。タブ切替後も保持。
@@ -425,11 +432,68 @@ function itemHtml(item, idx, ungroup) {
     </article>`;
 }
 
+// 棚を先頭から描き直す（タブ切替・並べ替え・まとめ解除・検索など、並びが変わる
+// 操作は必ずこれを呼ぶ）。実描画は先頭 PAGE_SIZE 件のみで、残りはスクロールに
+// 応じて appendNextPage が追加する。
 function renderShelf() {
+  renderedCount = 0;
+  els.shelf.innerHTML = '';
+  appendNextPage();
+}
+
+// shelfItems の renderedCount 以降から PAGE_SIZE 件を追加描画する。呼び出し後は
+// renderedCount が更新される。既に全件描画済みなら何もしない。
+function appendNextPage() {
+  if (renderedCount >= shelfItems.length) return;
   const ungroup = activeTab === 'series' && seriesUngrouped;
-  const html = shelfItems.map((it, i) => itemHtml(it, i, ungroup)).join('');
-  els.shelf.innerHTML = html;
+  const end = Math.min(renderedCount + PAGE_SIZE, shelfItems.length);
+  const html = shelfItems
+    .slice(renderedCount, end)
+    .map((it, i) => itemHtml(it, renderedCount + i, ungroup))
+    .join('');
+  els.shelf.insertAdjacentHTML('beforeend', html);
+  renderedCount = end;
   els.shelf.setAttribute('aria-busy', 'false');
+}
+
+// 棚の中身を1個のメッセージ（読み込み中/該当なし/エラー）へ置き換える。shelfItems/
+// renderedCount も空にリセットしないと、センチネル（棚の外にある監視要素）は
+// 前回描画分の残り件数を「まだ読み込める」と見なしたままになり、IntersectionObserver
+// がメッセージ表示直後に前回検索の残りカードを追記してしまう。
+function showShelfMessage(html) {
+  shelfItems = [];
+  renderedCount = 0;
+  els.shelf.setAttribute('aria-busy', 'false');
+  els.shelf.innerHTML = `<p class="shelf__empty">${html}</p>`;
+}
+
+// shouldStop() が true を返すか全件描画済みになるまでページを追加し続ける
+// 共通ループ。棚板の再配置（applyShelfLayout）は 1 ページごとに行うと、描画済み
+// 件数に比例して棚全体の再走査コストがかさむ（ページ数が多いほど二乗的に重くなる）
+// ため、ループが終わったあとに一度だけ行う。
+function loadWhile(shouldStop) {
+  let loaded = false;
+  while (renderedCount < shelfItems.length && !shouldStop()) {
+    appendNextPage();
+    loaded = true;
+  }
+  if (loaded) applyShelfLayout(true);
+}
+
+// センチネル（棚の末尾に置いた監視用要素）が画面下端の近く（600px 手前）まで
+// 来ていれば次ページを追加する。IntersectionObserver は「交差状態が変化した
+// 瞬間」にしか発火しないため、タブ切替直後など「センチネルが交差したまま」の
+// ケースを取りこぼす。実際の座標で判定するループにし、広い画面で一度に複数
+// ページ分の空きができていても埋まるまで繰り返す。
+const LOAD_MORE_MARGIN_PX = 600;
+function maybeLoadMore() {
+  loadWhile(() => els.sentinel.getBoundingClientRect().top > window.innerHeight + LOAD_MORE_MARGIN_PX);
+}
+
+// 指定の Y 座標までスクロールできるだけの十分な描画量を確保する（タブ復帰時、
+// 保存済みスクロール位置が先頭 PAGE_SIZE 件の範囲を超えている場合に使う）。
+function loadUntil(targetY) {
+  loadWhile(() => document.documentElement.scrollHeight >= targetY);
 }
 
 /* タブの基準アイテム列を返す。シリーズタブでまとめ解除中のときだけ展開版を使う。 */
@@ -461,8 +525,10 @@ function switchTab(tab) {
   renderShelf();
   applyShelfLayout(true);
 
-  // レイアウト確定後に保存位置（無ければ先頭）へ復元する。
+  // レイアウト確定後に保存位置（無ければ先頭）へ復元する。保存位置が先頭
+  // PAGE_SIZE 件の範囲を超えている場合は、そこまで届くよう追加読み込みしておく。
   const y = scrollByTab[tab] || 0;
+  loadUntil(y + window.innerHeight);
   requestAnimationFrame(() => window.scrollTo(0, y));
 }
 
@@ -479,6 +545,7 @@ function toggleSeriesUngroup(on) {
   renderShelf();
   applyShelfLayout(true);
   window.scrollTo(0, 0);
+  maybeLoadMore(); // 先頭に戻った直後、画面を埋めるだけの分は続けて読み込む
 }
 
 /* 並べ替えを切り替える。表示中タブの基準順へ新しい sortMode を適用し、棚を再描画する。
@@ -494,6 +561,7 @@ function changeSort(mode) {
   renderShelf();
   applyShelfLayout(true);
   window.scrollTo(0, 0);
+  maybeLoadMore(); // 先頭に戻った直後、画面を埋めるだけの分は続けて読み込む
 }
 
 /* ---------- 棚板（各段の下のデザイン要素） ---------- */
@@ -829,8 +897,19 @@ function bindEvents() {
       applyShelfLayout(false);
       updateToolbarLayout();
       syncSortHeadingOption();
+      maybeLoadMore(); // 画面が広がり一度に多くの段が見える場合の追加読み込み
     }, 120);
   });
+
+  // 無限スクロール: 画面下端のセンチネルが近づいたら次の PAGE_SIZE 件を追加する。
+  // rootMargin で実際に見える少し手前（600px）から先読みし、スクロールが
+  // 途切れないようにする。
+  if (els.sentinel) {
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some(en => en.isIntersecting)) maybeLoadMore();
+    }, { rootMargin: `${LOAD_MORE_MARGIN_PX}px 0px` });
+    io.observe(els.sentinel);
+  }
 }
 
 /* ---------- 起動・データ反映 ---------- */
@@ -854,6 +933,10 @@ function setBooks(books) {
   shelfItems = sortedItems(baseItemsFor(activeTab), sortMode);
   renderShelf();
   applyShelfLayout(true);
+  // 先頭へ戻してから埋める。直前の検索/タブで深くスクロールした位置のまま
+  // maybeLoadMore を呼ぶと、無駄に何ページも先読みしてしまうため。
+  window.scrollTo(0, 0);
+  maybeLoadMore();
 }
 
 /* 既定データ（静的 data/books.json）を読み込んで表示する。動的検索サーバが無くても
@@ -865,9 +948,7 @@ async function loadDefault() {
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
     setBooks(books);
   } catch (err) {
-    els.shelf.setAttribute('aria-busy', 'false');
-    els.shelf.innerHTML =
-      `<p class="shelf__empty">データの読み込みに失敗しました（${escapeHtml(String(err.message || err))}）。<br>build を実行して <code>site/data/books.json</code> を生成してください。</p>`;
+    showShelfMessage(`データの読み込みに失敗しました（${escapeHtml(String(err.message || err))}）。<br>build を実行して <code>site/data/books.json</code> を生成してください。`);
   }
 }
 
@@ -875,6 +956,8 @@ async function loadDefault() {
  * 返却スキーマは books.json と同一なので setBooks() をそのまま流用できる。 */
 async function runSearch(query) {
   if (!query) { await loadDefault(); window.scrollTo(0, 0); return; }
+  shelfItems = [];
+  renderedCount = 0;
   els.shelf.setAttribute('aria-busy', 'true');
   els.shelf.innerHTML = '<p class="shelf__loading">検索中…</p>';
   try {
@@ -882,17 +965,12 @@ async function runSearch(query) {
     const books = await fetch(url)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
     if (!Array.isArray(books) || books.length === 0) {
-      els.shelf.setAttribute('aria-busy', 'false');
-      els.shelf.innerHTML =
-        `<p class="shelf__empty">「${escapeHtml(query)}」に一致する書誌は見つかりませんでした。</p>`;
+      showShelfMessage(`「${escapeHtml(query)}」に一致する書誌は見つかりませんでした。`);
       return;
     }
-    setBooks(books);
-    window.scrollTo(0, 0);
+    setBooks(books); // 先頭へのスクロールも setBooks 側で行う
   } catch (err) {
-    els.shelf.setAttribute('aria-busy', 'false');
-    els.shelf.innerHTML =
-      `<p class="shelf__empty">検索に失敗しました（${escapeHtml(String(err.message || err))}）。<br>検索用サーバ（<code>server/app.py</code>）が起動しているか確認してください。</p>`;
+    showShelfMessage(`検索に失敗しました（${escapeHtml(String(err.message || err))}）。<br>検索用サーバ（<code>server/app.py</code>）が起動しているか確認してください。`);
   }
 }
 
