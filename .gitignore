@@ -1,3 +1,5 @@
 .cache/
 __pycache__/
 *.pyc
+# 動的検索サーバの結果キャッシュ（キーワード単位・冪等・再生成可能）
+server/cache/

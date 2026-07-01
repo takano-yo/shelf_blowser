@@ -8,6 +8,11 @@
 
 const DATA_URL = 'data/books.json';
 
+// 動的検索 API のエンドポイント（server/app.py が提供）。同一オリジン配信を既定とし、
+// 別オリジンのバックエンド（例: GitHub Pages のフロント + 別ホストの API）に置く
+// 場合はここを絶対 URL に変えるだけでよい。返る JSON は books.json と同一スキーマ。
+const SEARCH_URL = 'api/search';
+
 // 多巻もの判定の閾値（プロトタイプ）。巻数（hasPart 由来の ISBN 数）がこの値以上の
 // ものだけを「多巻のシリーズ的書籍」として扱う。上下(2)/上中下(3)/正続(2) のような
 // 1 冊を少数に分冊しただけのものは閾値未満となり、シリーズ以外（単独）へ回す。
@@ -30,6 +35,7 @@ const els = {
   overlayBody: document.getElementById('overlay-body'),
   searchbarInner: document.querySelector('.searchbar__inner'),
   searchForm: document.getElementById('search-form'),
+  searchInput: document.getElementById('search-input'),
   tabs: document.getElementById('tabs'),
   sort: document.querySelector('.sort'),
   sortSelect: document.getElementById('sort-select'),
@@ -808,9 +814,11 @@ function bindEvents() {
     els.groupToggle.addEventListener('change', (e) => toggleSeriesUngroup(!e.target.checked));
   }
 
-  // 検索窓はダミー（送信しても何もしない）
+  // 検索窓: 入力語で API（server/app.py）を叩き、返ってきた books（books.json と
+  // 同一スキーマ）で棚を作り直す。空送信は既定データ（data/books.json）へ戻す。
   els.searchForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    runSearch(els.searchInput ? els.searchInput.value.trim() : '');
   });
 
   // ウィンドウ幅変化で列数が変わったら棚板を敷き直す（リサイズ確定後にだけ実行）。
@@ -825,25 +833,74 @@ function bindEvents() {
   });
 }
 
-/* ---------- 起動 ---------- */
+/* ---------- 起動・データ反映 ---------- */
 
-async function init() {
-  bindEvents();
-  updateToolbarLayout();
-  syncSortHeadingOption();
+/* books 配列（build の books.json / 動的検索 API いずれも同一スキーマ）を棚へ反映する
+ * 共通経路。初期ロードと検索の両方から呼ぶ。表示は「すべて」タブ・先頭から始める。
+ * 並べ替えモード（sortMode）は現在の選択を引き継ぐ。 */
+function setBooks(books) {
+  tabItems = buildShelfItems(books);
+  activeTab = 'all';
+  seriesUngrouped = false;
+  // タブの見た目を「すべて」に戻す。
+  els.tabs.querySelectorAll('.tab').forEach((b) => {
+    const on = b.dataset.tab === 'all';
+    b.classList.toggle('is-active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  if (els.seriesToggle) els.seriesToggle.hidden = true;
+  Object.keys(scrollByTab).forEach((k) => delete scrollByTab[k]);
+  hideCoverDetail();
+  shelfItems = sortedItems(baseItemsFor(activeTab), sortMode);
+  renderShelf();
+  applyShelfLayout(true);
+}
+
+/* 既定データ（静的 data/books.json）を読み込んで表示する。動的検索サーバが無くても
+ * この経路だけで従来どおり本棚が見える（グレースフルデグレード）。 */
+async function loadDefault() {
+  els.shelf.setAttribute('aria-busy', 'true');
   try {
     const books = await fetch(DATA_URL)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
-
-    tabItems = buildShelfItems(books);
-    shelfItems = sortedItems(tabItems[activeTab], sortMode);
-    renderShelf();
-    applyShelfLayout(true);
+    setBooks(books);
   } catch (err) {
     els.shelf.setAttribute('aria-busy', 'false');
     els.shelf.innerHTML =
       `<p class="shelf__empty">データの読み込みに失敗しました（${escapeHtml(String(err.message || err))}）。<br>build を実行して <code>site/data/books.json</code> を生成してください。</p>`;
   }
+}
+
+/* 動的検索。検索語で API を叩き、返った books で棚を作り直す。空語なら既定へ戻す。
+ * 返却スキーマは books.json と同一なので setBooks() をそのまま流用できる。 */
+async function runSearch(query) {
+  if (!query) { await loadDefault(); window.scrollTo(0, 0); return; }
+  els.shelf.setAttribute('aria-busy', 'true');
+  els.shelf.innerHTML = '<p class="shelf__loading">検索中…</p>';
+  try {
+    const url = `${SEARCH_URL}?q=${encodeURIComponent(query)}`;
+    const books = await fetch(url)
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    if (!Array.isArray(books) || books.length === 0) {
+      els.shelf.setAttribute('aria-busy', 'false');
+      els.shelf.innerHTML =
+        `<p class="shelf__empty">「${escapeHtml(query)}」に一致する書誌は見つかりませんでした。</p>`;
+      return;
+    }
+    setBooks(books);
+    window.scrollTo(0, 0);
+  } catch (err) {
+    els.shelf.setAttribute('aria-busy', 'false');
+    els.shelf.innerHTML =
+      `<p class="shelf__empty">検索に失敗しました（${escapeHtml(String(err.message || err))}）。<br>検索用サーバ（<code>server/app.py</code>）が起動しているか確認してください。</p>`;
+  }
+}
+
+async function init() {
+  bindEvents();
+  updateToolbarLayout();
+  syncSortHeadingOption();
+  await loadDefault();
 }
 
 if (document.readyState === 'loading') {
