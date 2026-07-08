@@ -39,6 +39,8 @@ const els = {
   sentinel: document.getElementById('shelf-sentinel'),
   overlay: document.getElementById('overlay'),
   overlayBody: document.getElementById('overlay-body'),
+  aboutOverlay: document.getElementById('about-overlay'),
+  aboutOpenBtn: document.getElementById('about-open-btn'),
   searchbarInner: document.querySelector('.searchbar__inner'),
   searchForm: document.getElementById('search-form'),
   searchInput: document.getElementById('search-input'),
@@ -721,11 +723,34 @@ function openOverlay(item) {
 
 function closeOverlay() {
   els.overlay.hidden = true;
-  document.body.style.overflow = '';
+  if (!els.aboutOverlay || els.aboutOverlay.hidden) document.body.style.overflow = '';
   const panel = els.overlay.querySelector('.overlay__panel');
   panel.style.transition = '';
   panel.style.transform = '';
   if (lastFocused && lastFocused.focus) lastFocused.focus();
+}
+
+/* ---------- 「データについて」オーバーレイ ---------- */
+// 本棚の上に重ねて表示するだけで本棚自体は裏でそのまま残るため、
+// 閉じたときの本棚のスクロール位置は自動的に維持される。
+
+let aboutLastFocused = null;
+
+function openAboutOverlay() {
+  if (!els.aboutOverlay) return;
+  els.aboutOverlay.hidden = false;
+  document.body.style.overflow = 'hidden';
+  aboutLastFocused = document.activeElement;
+  const panel = els.aboutOverlay.querySelector('.overlay__panel');
+  panel.scrollTop = 0;
+  panel.focus();
+}
+
+function closeAboutOverlay() {
+  if (!els.aboutOverlay) return;
+  els.aboutOverlay.hidden = true;
+  if (els.overlay.hidden) document.body.style.overflow = '';
+  if (aboutLastFocused && aboutLastFocused.focus) aboutLastFocused.focus();
 }
 
 // 縦方向に重なりがあれば同じ折り返し行とみなす（align-items の違いで
@@ -862,9 +887,20 @@ function bindEvents() {
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.overlay.hidden) closeOverlay();
+    if (e.key === 'Escape' && els.aboutOverlay && !els.aboutOverlay.hidden) closeAboutOverlay();
   });
   // モバイル: 下スワイプでボトムシートを閉じる
   bindSheetSwipe();
+
+  // 「データについて」オーバーレイの開閉
+  if (els.aboutOpenBtn) {
+    els.aboutOpenBtn.addEventListener('click', openAboutOverlay);
+  }
+  if (els.aboutOverlay) {
+    els.aboutOverlay.addEventListener('click', (e) => {
+      if (e.target.hasAttribute('data-about-close')) closeAboutOverlay();
+    });
+  }
 
   // タブ切り替え（クリック / Enter・Space はボタン要素が自動で click を発火）
   els.tabs.addEventListener('click', (e) => {
