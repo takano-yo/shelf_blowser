@@ -52,7 +52,20 @@ a { color: var(--sky-deep); }
   padding: 0.75rem 1.25rem;
 }
 
-.site-header__brand { display: flex; align-items: baseline; gap: 0.6rem; flex: 0 0 auto; }
+.site-header__brand { display: flex; align-items: baseline; gap: 0.6rem; flex: 0 0 auto; margin-right: auto; }
+
+.about-open {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--sky-deep);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.about-open:hover { color: #fff; background: var(--sky-deep); border-color: var(--sky-deep); }
 
 .site-header__title {
   margin: 0;
@@ -622,6 +635,17 @@ a { color: var(--sky-deep); }
 }
 .overlay__close:hover { color: var(--text); background: var(--surface-2); }
 
+/* 「データについて」オーバーレイは書籍詳細より幅広のパネルを使う */
+.overlay__panel--about { width: min(38rem, 92vw); }
+.about-body__title { margin: 0 2rem 1.2rem 0; font-size: 1.3rem; }
+.about-body__section { margin: 0 0 1.4rem; }
+.about-body__section:last-child { margin-bottom: 0; }
+.about-body__section h3 { margin: 0 0 0.4rem; font-size: 1rem; color: var(--sky-deep); }
+.about-body__section p { margin: 0 0 0.5rem; font-size: 0.9rem; }
+.about-body__section p:last-child { margin-bottom: 0; }
+.about-body__section ul { margin: 0.3rem 0 0; padding-left: 1.2rem; font-size: 0.88rem; }
+.about-body__section li { margin: 0.2rem 0; }
+
 /* 詳細画面の上部に表示する書影（書影ありの場合のみ） */
 .ov__cover {
   display: block;
@@ -682,7 +706,8 @@ a { color: var(--sky-deep); }
   .site-header__bar { gap: 0.6rem; }
 
   /* モバイルは詳細をボトムシート化 */
-  .overlay__panel {
+  .overlay__panel,
+  .overlay__panel--about {
     top: auto;
     bottom: 0;
     right: 0;

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>shelf_blowser — 日本近代文学の本棚</title>
   <meta name="description" content="CiNii Books の書誌データを本棚のように並べてブラウジングする学術検索支援アプリ（試作版：日本近代文学）">
-  <link rel="stylesheet" href="css/styles.css?v=20260701a">
+  <link rel="stylesheet" href="css/styles.css?v=20260708a">
 </head>
 <body>
   <!-- ページ最上部のヘッダ（タイトル/説明）。スクロールには追随せず流れて消える。 -->
@@ -15,6 +15,7 @@
         <h1 class="site-header__title">shelf_blowser</h1>
         <p class="site-header__subtitle">日本近代文学の本棚</p>
       </div>
+      <button class="about-open" type="button" id="about-open-btn">データについて</button>
     </div>
   </header>
 
@@ -78,10 +79,45 @@
     </aside>
   </div>
 
+  <!-- 「データについて」オーバーレイ（画面全体）。メインの本棚の上に重ねて表示するだけなので、
+       閉じれば本棚のスクロール位置はそのまま維持される。 -->
+  <div class="overlay" id="about-overlay" hidden>
+    <div class="overlay__backdrop" data-about-close></div>
+    <aside class="overlay__panel overlay__panel--about" role="dialog" aria-modal="true" aria-labelledby="about-title" tabindex="-1">
+      <button class="overlay__close" type="button" data-about-close aria-label="閉じる">×</button>
+      <div class="overlay__body about-body">
+        <h2 class="about-body__title" id="about-title">データについて</h2>
+
+        <section class="about-body__section">
+          <h3>書誌データ</h3>
+          <p>書誌データは国立情報学研究所（NII）が提供する CiNii Books OpenSearch API から取得し、CC BY 4.0 ライセンスのもとで使用しています。</p>
+        </section>
+
+        <section class="about-body__section">
+          <h3>書影データ</h3>
+          <p>書影（表紙画像）は openBD API から取得し、書籍の紹介を目的として使用しています。</p>
+        </section>
+
+        <section class="about-body__section">
+          <h3>デフォルトの並び順について</h3>
+          <p>「すべて」タブのみ独自の重みづけによる並び順を採用しており、それ以外のタブ（単著/共著・編集書・シリーズ）は所蔵館数の多い順に並んでいます。</p>
+          <p>「すべて」タブの重みづけは次のとおりです。</p>
+          <ul>
+            <li>シリーズはまとめたうえで、平均6冊に1冊の割合で配置する</li>
+            <li>編集書も同様に、平均6冊に1冊の割合で配置する</li>
+            <li>残り（平均6冊中4冊）は単著・共著が占める</li>
+            <li>単著・共著を使い切った後は、残りのシリーズ・編集書を並べる</li>
+            <li>いずれの場合も、所蔵館数が多い順に並べる</li>
+          </ul>
+        </section>
+      </div>
+    </aside>
+  </div>
+
   <footer class="site-footer">
     <p>データ出典: <a href="https://support.nii.ac.jp/ja/cib/api/b_opensearch" target="_blank" rel="noopener">CiNii Books OpenSearch API</a>／表紙画像: <a href="https://openbd.jp/" target="_blank" rel="noopener">openBD</a></p>
   </footer>
 
-  <script src="js/app.js?v=20260701a" defer></script>
+  <script src="js/app.js?v=20260708a" defer></script>
 </body>
 </html>
