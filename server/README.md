@@ -1,9 +1,10 @@
 # server — 動的検索の最小 API サーバ（検証用）
 
-> 「検索語 → CiNii OpenSearch 取得 → `core.normalize` で正規化・整列 → books 配列を
-> JSON で返す」だけの最小サーバ。返す JSON は `build` が出力する
-> `site/data/books.json` と**同一スキーマ**のため、表示層（`site/`）は無改修で
-> 動的検索に対応する。標準ライブラリのみ・単一ファイル（`app.py`）。
+> 「検索語 → CiNii OpenSearch 取得 → `core.normalize` で正規化・整列 →
+> `core.openbd` で書影を一括付与 → books 配列を JSON で返す」だけの最小サーバ。
+> 返す JSON は `build` が出力する `site/data/books.json` と**同一スキーマ**の
+> ため、表示層（`site/`）は無改修で動的検索に対応する。標準ライブラリのみ・
+> 単一ファイル（`app.py`）。
 
 ## 提供するもの
 
@@ -23,14 +24,18 @@ python server/app.py --port 8000 --live
 ```
 
 主なオプション: `--host` / `--port` / `--live` / `--source PATH` / `--count N` /
-`--cache-ttl 秒`（0 で無期限）。
+`--cache-ttl 秒`（0 で無期限）/ `--no-covers`（書影取得を無効化）。
 
 ## キャッシュ
 
-- 検索語ごとの結果を `server/cache/` に保存し、同じ語の再取得を避ける
-  （CiNii へのマナー・応答速度）。キーは `live フラグ | count | 検索語` の SHA-1。
+- 検索語ごとの結果（書影付与後）を `server/cache/` に保存し、同じ語の再取得を
+  避ける（CiNii・OpenBD へのマナー・応答速度）。キーは
+  `live フラグ | count | 検索語` の SHA-1。
 - TTL は既定 3600 秒。**Git 管理外・冪等・再生成可能**（`build` の OpenBD
   キャッシュと同じ思想）。
+- 書影は `core.openbd.enrich_covers()` で ISBN 単位に `.cache/openbd/` へ
+  キャッシュする。`build --covers` が事前に埋めたキャッシュを共有するため、
+  同じ ISBN を再取得しない。
 
 ---
 
