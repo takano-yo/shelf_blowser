@@ -22,11 +22,12 @@ const MULTI_VOLUME_MIN = 4;
 // 編集書 1 冊・シリーズ的 1 冊を入れ、残りを単著/共著で埋める（編集書・シリーズの
 // ブロック内位置はランダム）。単著/共著が尽きるまでブロックを繰り返す＝この間
 // 編集書とシリーズは同割合（1:1）で混ざる。単著/共著が尽きたら、残りの編集書と
-// シリーズを冊数比率に合わせて混ぜ末尾へ付ける。乱数は固定シードで再現可能
-// （リフレッシュしても並びは不変）。
+// シリーズを冊数比率に合わせて混ぜ末尾へ付ける。乱数のシードは検索語から導出する
+// （検索語ごとにシードを取り直す一方、同じ検索語である限り・元データが同じ限り
+// 何度再検索・再表示しても同じ並びを再現できる）。
 const MIX_GAP_MIN = 4; // 1 ブロックの総冊数の下限
 const MIX_GAP_MAX = 8; // 同・上限
-const MIX_SEED = 0x9e3779b9;
+const MIX_SEED_BASE = 0x9e3779b9; // 既定表示（検索語なし）のシード基点
 
 // 無限スクロールの1ページあたりの件数。初回表示・タブ切替・並べ替え・検索後は
 // 常に先頭からこの件数だけ描画し、センチネル（画面下の監視要素）が見えるたびに
@@ -216,7 +217,7 @@ function sortedItems(base, mode) {
 
 /* ---------- データ整形（シリーズまとめ） ---------- */
 
-function buildShelfItems(books) {
+function buildShelfItems(books, query) {
   const groups = new Map(); // 親NCID -> グループ
   const items = [];
 
@@ -259,7 +260,7 @@ function buildShelfItems(books) {
   const editorialBucket = solo.filter(isEditorial).sort(byHoldings);
   const seriesBucket = items.filter(isSeriesLike).sort(byHoldings);
   return {
-    all: mixBlocks(personalBucket, seriesBucket, editorialBucket, mulberry32(MIX_SEED)),
+    all: mixBlocks(personalBucket, seriesBucket, editorialBucket, mulberry32(seedFromQuery(query))),
     personal: personalBucket,
     editorial: editorialBucket,
     series: seriesBucket,
@@ -311,6 +312,20 @@ function mulberry32(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/* 検索語（クエリ）から「すべて」タブの混在シードを導出する（FNV-1a 32bit）。
+ * 同じ検索語なら常に同じシード＝同じ元データなら常に同じ並びを再現できる一方、
+ * 検索語が変われば別のシード（＝別の並び）になる。既定表示（クエリなし）は
+ * MIX_SEED_BASE をそのまま使う。 */
+function seedFromQuery(query) {
+  if (!query) return MIX_SEED_BASE;
+  let h = 0x811c9dc5; // FNV offset basis
+  for (let i = 0; i < query.length; i++) {
+    h ^= query.charCodeAt(i);
+    h = Math.imul(h, 0x01000193); // FNV prime
+  }
+  return (h >>> 0) ^ MIX_SEED_BASE;
 }
 
 /* ブロック配分。4〜8冊（rng で決定）を 1 ブロックとし、編集書 1 冊・シリーズ的 1 冊を
@@ -952,9 +967,10 @@ function bindEvents() {
 
 /* books 配列（build の books.json / 動的検索 API いずれも同一スキーマ）を棚へ反映する
  * 共通経路。初期ロードと検索の両方から呼ぶ。表示は「すべて」タブ・先頭から始める。
- * 並べ替えモード（sortMode）は現在の選択を引き継ぐ。 */
-function setBooks(books) {
-  tabItems = buildShelfItems(books);
+ * 並べ替えモード（sortMode）は現在の選択を引き継ぐ。query は「すべて」タブの混在
+ * 順を決める乱数シードの元（既定表示なら空文字）。 */
+function setBooks(books, query) {
+  tabItems = buildShelfItems(books, query);
   activeTab = 'all';
   seriesUngrouped = false;
   // タブの見た目を「すべて」に戻す。
@@ -982,7 +998,7 @@ async function loadDefault() {
   try {
     const books = await fetch(DATA_URL)
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
-    setBooks(books);
+    setBooks(books, '');
   } catch (err) {
     showShelfMessage(`データの読み込みに失敗しました（${escapeHtml(String(err.message || err))}）。<br>build を実行して <code>site/data/books.json</code> を生成してください。`);
   }
@@ -1004,7 +1020,7 @@ async function runSearch(query) {
       showShelfMessage(`「${escapeHtml(query)}」に一致する書誌は見つかりませんでした。`);
       return;
     }
-    setBooks(books); // 先頭へのスクロールも setBooks 側で行う
+    setBooks(books, query); // 先頭へのスクロールも setBooks 側で行う
   } catch (err) {
     showShelfMessage(`検索に失敗しました（${escapeHtml(String(err.message || err))}）。<br>検索用サーバ（<code>server/app.py</code>）が起動しているか確認してください。`);
   }
