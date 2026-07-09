@@ -635,8 +635,20 @@ a { color: var(--sky-deep); }
 }
 .overlay__close:hover { color: var(--text); background: var(--surface-2); }
 
-/* 「データについて」オーバーレイは書籍詳細より幅広のパネルを使う */
-.overlay__panel--about { width: min(38rem, 92vw); }
+/* 「データについて」は書籍詳細（画面右パネル）と異なり、画面全体を覆う中央配置のモーダルにする */
+.overlay__panel--about {
+  top: 50%;
+  right: auto;
+  left: 50%;
+  height: auto;
+  max-height: 85vh;
+  width: min(42rem, 92vw);
+  transform: translate(-50%, -50%);
+  border-left: none;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(22, 50, 63, 0.3);
+  animation: fade-in-scale 0.18s ease;
+}
 .about-body__title { margin: 0 2rem 1.2rem 0; font-size: 1.3rem; }
 .about-body__section { margin: 0 0 1.4rem; }
 .about-body__section:last-child { margin-bottom: 0; }
@@ -698,6 +710,10 @@ a { color: var(--sky-deep); }
 
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes fade-in-scale {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
 
 /* ===== レスポンシブ ===== */
 @media (max-width: 600px) {
@@ -710,9 +726,12 @@ a { color: var(--sky-deep); }
   .overlay__panel--about {
     top: auto;
     bottom: 0;
+    left: auto;
     right: 0;
     width: 100%;
+    max-height: min(80vh, 100%);
     height: min(80vh, 100%);
+    transform: none;
     border-left: none;
     border-top: 4px solid var(--sky);
     border-radius: 16px 16px 0 0;
