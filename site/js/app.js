@@ -754,6 +754,7 @@ let aboutLastFocused = null;
 function openAboutOverlay() {
   if (!els.aboutOverlay) return;
   els.aboutOverlay.hidden = false;
+  if (els.aboutOpenBtn) els.aboutOpenBtn.setAttribute('aria-expanded', 'true');
   document.body.style.overflow = 'hidden';
   aboutLastFocused = document.activeElement;
   const panel = els.aboutOverlay.querySelector('.overlay__panel');
@@ -764,8 +765,16 @@ function openAboutOverlay() {
 function closeAboutOverlay() {
   if (!els.aboutOverlay) return;
   els.aboutOverlay.hidden = true;
+  if (els.aboutOpenBtn) els.aboutOpenBtn.setAttribute('aria-expanded', 'false');
   if (els.overlay.hidden) document.body.style.overflow = '';
   if (aboutLastFocused && aboutLastFocused.focus) aboutLastFocused.focus();
+}
+
+// 「データについて」ボタンで開閉をトグルする（×ボタンは持たない）。
+function toggleAboutOverlay() {
+  if (!els.aboutOverlay) return;
+  if (els.aboutOverlay.hidden) openAboutOverlay();
+  else closeAboutOverlay();
 }
 
 // 縦方向に重なりがあれば同じ折り返し行とみなす（align-items の違いで
@@ -907,9 +916,9 @@ function bindEvents() {
   // モバイル: 下スワイプでボトムシートを閉じる
   bindSheetSwipe();
 
-  // 「データについて」オーバーレイの開閉
+  // 「データについて」オーバーレイの開閉（ボタン自体をトグルにする）
   if (els.aboutOpenBtn) {
-    els.aboutOpenBtn.addEventListener('click', openAboutOverlay);
+    els.aboutOpenBtn.addEventListener('click', toggleAboutOverlay);
   }
   if (els.aboutOverlay) {
     els.aboutOverlay.addEventListener('click', (e) => {
