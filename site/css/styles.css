@@ -52,10 +52,12 @@ a { color: var(--sky-deep); }
   padding: 0.75rem 1.25rem;
 }
 
-.site-header__brand { display: flex; align-items: baseline; gap: 0.6rem; flex: 0 0 auto; margin-right: auto; }
+.site-header__brand { display: flex; align-items: baseline; gap: 0.6rem; flex: 0 1 auto; flex-wrap: wrap; }
 
 .about-open {
   flex: 0 0 auto;
+  align-self: center;
+  margin-left: 0.4rem;
   padding: 0.4rem 0.9rem;
   font-size: 0.82rem;
   font-weight: 700;
