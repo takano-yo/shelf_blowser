@@ -14,7 +14,7 @@
       <div class="site-header__brand">
         <h1 class="site-header__title">shelf_blowser</h1>
         <p class="site-header__subtitle">日本近代文学の本棚</p>
-        <button class="about-open" type="button" id="about-open-btn">データについて</button>
+        <button class="about-open" type="button" id="about-open-btn" aria-expanded="false">データについて</button>
       </div>
     </div>
   </header>
@@ -84,7 +84,6 @@
   <div class="overlay" id="about-overlay" hidden>
     <div class="overlay__backdrop" data-about-close></div>
     <aside class="overlay__panel overlay__panel--about" role="dialog" aria-modal="true" aria-labelledby="about-title" tabindex="-1">
-      <button class="overlay__close" type="button" data-about-close aria-label="閉じる">×</button>
       <div class="overlay__body about-body">
         <h2 class="about-body__title" id="about-title">データについて</h2>
 

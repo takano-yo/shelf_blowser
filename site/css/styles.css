@@ -68,6 +68,21 @@ a { color: var(--sky-deep); }
   cursor: pointer;
 }
 .about-open:hover { color: #fff; background: var(--sky-deep); border-color: var(--sky-deep); }
+/* オーバーレイ表示中はヘッダーがスクロールで隠れていてもボタンを押せるよう、
+   画面右上に固定してトグル操作を継続できるようにする。
+   z-index は表示中（aria-expanded="true"）のときだけ引き上げ、書籍詳細オーバーレイ
+   （.overlay, z-index:50）の上に常に乗ってしまわないようにする。 */
+.about-open[aria-expanded="true"] {
+  position: fixed;
+  z-index: 60;
+  top: 1rem;
+  right: 1.25rem;
+  margin-left: 0;
+  color: #fff;
+  background: var(--sky-deep);
+  border-color: var(--sky-deep);
+  box-shadow: 0 4px 14px rgba(22, 50, 63, 0.25);
+}
 
 .site-header__title {
   margin: 0;
@@ -637,21 +652,32 @@ a { color: var(--sky-deep); }
 }
 .overlay__close:hover { color: var(--text); background: var(--surface-2); }
 
-/* 「データについて」は書籍詳細（画面右パネル）と異なり、画面全体を覆う中央配置のモーダルにする */
-.overlay__panel--about {
-  top: 50%;
-  right: auto;
-  left: 50%;
-  height: auto;
-  max-height: 85vh;
-  width: min(42rem, 92vw);
-  transform: translate(-50%, -50%);
-  border-left: none;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(22, 50, 63, 0.3);
-  animation: fade-in-scale 0.18s ease;
+/* 「データについて」は書籍詳細（画面右パネル）と異なり、画面全体を覆うオーバーレイにする。
+   開閉は「データについて」ボタンのトグルのみで行う（×ボタンは持たない）。 */
+#about-overlay .overlay__backdrop {
+  background: rgba(90, 90, 90, 0.85);
 }
-.about-body__title { margin: 0 2rem 1.2rem 0; font-size: 1.3rem; }
+.overlay__panel--about {
+  top: 0;
+  right: 0;
+  left: 0;
+  bottom: 0;
+  height: 100%;
+  max-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  transform: none;
+  border-left: none;
+  border-radius: 0;
+  background: #ececec;
+  box-shadow: none;
+  animation: fade-in-full 0.18s ease;
+}
+.overlay__panel--about .about-body {
+  max-width: 42rem;
+  margin: 0 auto;
+}
+.about-body__title { margin: 0 0 1.2rem; font-size: 1.3rem; }
 .about-body__section { margin: 0 0 1.4rem; }
 .about-body__section:last-child { margin-bottom: 0; }
 .about-body__section h3 { margin: 0 0 0.4rem; font-size: 1rem; color: var(--sky-deep); }
@@ -712,9 +738,9 @@ a { color: var(--sky-deep); }
 
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
-@keyframes fade-in-scale {
-  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
-  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+@keyframes fade-in-full {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ===== レスポンシブ ===== */
@@ -723,9 +749,8 @@ a { color: var(--sky-deep); }
   .shelf { gap: 1.25rem 0.85rem; }
   .site-header__bar { gap: 0.6rem; }
 
-  /* モバイルは詳細をボトムシート化 */
-  .overlay__panel,
-  .overlay__panel--about {
+  /* モバイルは詳細をボトムシート化（「データについて」は常に画面全体のまま） */
+  .overlay__panel:not(.overlay__panel--about) {
     top: auto;
     bottom: 0;
     left: auto;
@@ -742,7 +767,7 @@ a { color: var(--sky-deep); }
     padding-top: 1.6rem;
   }
   /* ドラッグハンドル（つまみ）: 下スワイプで閉じられることを示唆 */
-  .overlay__panel::before {
+  .overlay__panel:not(.overlay__panel--about)::before {
     content: "";
     position: absolute;
     top: 0.55rem;
