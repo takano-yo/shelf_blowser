@@ -10,6 +10,10 @@
 - **動的検索**: `server/app.py`（`http.server` ベース・検証用）は**ローカル実行のみ**。
 - **契約**: `books.json` のスキーマが唯一の契約で、静的・動的どちらの経路も
   これを `site/` へ渡す（[ルート README](../README.md#アーキテクチャ静的既定--動的検索のハイブリッド)）。
+- **ページ構成**: スタートページ＋NDC 分類ナビへの刷新（P2）が最新方針
+  （[site-structure.md](site-structure.md)）。NDC 棚データも「棚単位の静的 JSON」
+  として配信するため、本レビューの結論（表示層は現状維持・改善は Python 側）とは
+  矛盾しない。
 
 結論を先に言うと、**表示層（HTML/CSS/JS）は現状維持が最適**で、
 **改善の投資対効果が大きいのは Python 側（特に `server/`）**である。
@@ -43,15 +47,15 @@
 これらを標準ライブラリで一つずつ手当てするより、**HTTP 層を FastAPI に
 差し替える方が少ないコードで多くを解決する**。
 
-| 現状の課題（server/README の P2 項目） | FastAPI での解決 |
+| 現状の課題（server/README の P3 項目） | FastAPI での解決 |
 |---|---|
 | 応答圧縮が無い（books 配列は MB 級） | `GZipMiddleware` 1 行。**実測: 既定データ 2.0MB → gzip 約 356KB（82% 削減）** |
 | `count` の下限なし・`q` の長さ制限なし | `Query(ge=1, le=10000)` / `max_length=200` の宣言的バリデーション（不正値は自動で 422） |
 | `Access-Control-Expose-Headers` 未対応 | `CORSMiddleware(expose_headers=[...])` で解決 |
 | 静的配信に `ETag` / `Cache-Control` が無い | `StaticFiles` が ETag・Range・Content-Type を標準処理（自前の `_serve_static` ＋ MIME 表 約 50 行を削除できる） |
 | レート制限が無い | `slowapi` 等のミドルウェアを後付け可能 |
-| 公開には WSGI/ASGI 化が必要（README #3） | ASGI ネイティブ。**ローカルも本番も同じ `uvicorn` で動く**ため、ローカル専用→公開の移行が「デプロイ先を選ぶだけ」になる |
-| テスト手段が乏しい | `TestClient` で `/api/search` の HTTP レベルのテストが書ける（P2 のテスト整備と相乗） |
+| 公開には WSGI/ASGI 化が必要（README #4） | ASGI ネイティブ。**ローカルも本番も同じ `uvicorn` で動く**ため、ローカル専用→公開の移行が「デプロイ先を選ぶだけ」になる |
+| テスト手段が乏しい | `TestClient` で `/api/search` の HTTP レベルのテストが書ける（P3 のテスト整備と相乗） |
 
 移行の要点:
 
@@ -88,7 +92,7 @@
 
 ### 提案 3 — 検索キャッシュの diskcache 化【小工数】
 
-server/README P2 の「キャッシュが無限に貯まる」への対処として、自前のファイル
+server/README P3 の「キャッシュが無限に貯まる」への対処として、自前のファイル
 キャッシュを [diskcache](https://grantjenks.com/docs/diskcache/)（SQLite ベース）に
 置き換える。TTL・**容量上限つき LRU 追い出し**・プロセス/スレッド安全が
 設定だけで手に入り、`_cache_path` / `_load_cache` / `_save_cache` の自前実装と
@@ -108,9 +112,9 @@ server/README P2 の「キャッシュが無限に貯まる」への対処とし
 導入は `server`/テスト側に限定し、`core/normalize.py` は dict を返す純粋関数の
 まま変えない（モデル化は境界＝出入口でのみ行う）。
 
-### 提案 5 — pytest ＋ ruff ＋ CI【ロードマップ P2 #3 の具体化】
+### 提案 5 — pytest ＋ ruff ＋ CI【ロードマップ P3 #9 の具体化】
 
-[core/README の P2 #2](../core/README.md) で要件定義済みのテスト整備を、
+[core/README の #2（P3）](../core/README.md) で要件定義済みのテスト整備を、
 依存の観点から確定させる:
 
 - **pytest**: `tests/test_normalize.py`（役割語の最長一致・「ほか/他」判定・
@@ -144,23 +148,27 @@ dev    = ["pytest", "ruff"]
 
 ---
 
-## 表示層（HTML/CSS/JS）— 現状維持を推奨
+## 表示層（HTML/CSS/JS）— 技術構成は現状維持を推奨
 
 - **フレームワーク・バンドラ導入は非推奨**。ビルド工程なしが GitHub Pages 直配信・
   「クローンすれば動く」性質と整合しており、現規模で失うものの方が大きい。
-- **データ転送量は既に実質解決済み**: `books.json` は 2.0MB だが、GitHub Pages・
-  提案 1 の gzip どちらでも実転送は約 360KB。5,212 件規模では分割ロードは不要で、
-  「すべて」タブの混在ロジック（全件を 3 バケットに分けてから配分）が全件読み込みを
-  前提とするため、**データ分割はむしろ非推奨**。
-- 表示層の改善は既存ロードマップ P3（URL 状態同期・AbortController・ピボット
-  ブラウジング等、[site/README](../site/README.md)）で必要十分。本レビューで
-  追加すべき新項目は無い。
+  スタートページの追加（P2）もバニラ JS・静的 HTML の範囲で行う。
+- **データ転送量は当面問題ない**: `books.json` は 2.0MB だが、GitHub Pages・
+  提案 1 の gzip どちらでも実転送は約 360KB。**1 つの棚＝1 ファイルを丸ごと読む**
+  方式を維持する（「すべて」タブの混在ロジックが棚単位の全件読み込みを前提とする
+  ため、棚内の分割はしない）。NDC 棚（P2）も 1 分類 1 ファイルで同じ方式であり、
+  最大 10,000 件（gzip 転送で約 700KB 想定）は許容範囲。体感が悪ければ分割ロードへ
+  切り替える（[site/README](../site/README.md) #7）。
+- 表示層の改善は最新方針の P2（スタートページ・本棚ページの初期条件対応
+  ＝ [site-structure.md](site-structure.md)）と既存ロードマップ P4（AbortController・
+  ピボットブラウジング等、[site/README](../site/README.md)）で必要十分。
+  本レビューで追加すべき新項目は無い。
 
 ## その他の非推奨事項（過剰と判断したもの）
 
 | 案 | 見送る理由 |
 |---|---|
-| データベース（SQLite/PostgreSQL）導入 | データは数千件の静的 JSON ＋外部 API 中継で完結しており、検索も CiNii 側で行う。永続化すべき自前状態が無い |
+| データベース（SQLite/PostgreSQL）導入 | データは棚単位の静的 JSON（既定 5,212 件・NDC 棚は 1 分類最大 1 万件程度）＋外部 API 中継で完結しており、検索は CiNii 側またはクライアント絞り込みで行う。永続化すべき自前状態が無い |
 | Node.js バックエンド併設 | Python（core 共有）と二重実装になり、「build と server が同一ロジック」という設計の要を壊す |
 | Docker 必須化 | uv ＋ pyproject で環境再現は足りる。デプロイ先が要求する場合のみ用意すれば良い |
 
@@ -176,7 +184,7 @@ dev    = ["pytest", "ruff"]
 | `core/` の純粋性・ゼロ依存 | 不変（httpx は新取得経路のみ。正規化は無改修） |
 | `build/` のゼロ依存・オフライン動作 | 不変（`python build/build.py` はインストール不要のまま） |
 | ローカル実行手順 | `server` の起動コマンドのみ変更（`python server/app.py` 互換の `main()` を残すことで最小化可能）。README の該当箇所を更新する |
-| 既存ロードマップ | P1（CiNii Research 移行）＝提案 2、P2 #3（テスト）＝提案 5、P2 #4（server 堅牢化）＝提案 1・3、公開ホスティング（server/README #3）＝提案 1 が前提整備に相当。**矛盾なし** |
+| 既存ロードマップ | P1（CiNii Research 移行）＝提案 2、P3 #9（テスト）＝提案 5、P3 #10（server 堅牢化）＝提案 1・3、公開ホスティング（server/README #4）＝提案 1 が前提整備に相当。P2（NDC 棚データの取得バッチ）も提案 2 の並列取得の恩恵を受ける。**矛盾なし** |
 
 ## 段階的な導入プラン
 
