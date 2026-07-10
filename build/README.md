@@ -1,15 +1,19 @@
 # ② build — 検索項目の抽出・データ加工（要件定義）
 
 > **本書はビルド処理の要件定義書である。** Python スクリプト（`build.py`）で
-> `source/日本近代文学.json`（OpenSearch = 一覧）を読み込み、下流の `site` が
-> そのまま `fetch()` で読める表示用 JSON（`site/data/books.json`）へ整形する。
+> OpenSearch レスポンス（一覧）を読み込み、下流の `site` がそのまま `fetch()` で
+> 読める表示用 JSON へ整形する。
 >
-> **2 系統のデータを生成しうるが、現フェーズの対象はトップページ用のみ。**
-> - **トップページ用データ**（現フェーズ）… `source/日本近代文学.json` だけで生成。
->   本棚表示は一覧情報で足りる。→ `site/data/books.json`
-> - **詳細検索用の索引（件名・著者名）**（後回し）… `fetch` が取得した一件ごとの
->   詳細 API を合流させて生成する。本書末尾に将来要件として記載するが、**現フェーズ
->   では実装しない**（`site` 側も詳細検索を現フェーズ対象外としているため）。
+> **3 系統のデータを生成しうる。**
+> - **既定データ（キーワード棚）**（実装済み）… `source/日本近代文学.json` だけで
+>   生成。本棚表示は一覧情報で足りる。→ `site/data/books.json`
+> - **NDC 棚データ**（計画・P2）… `fetch/ndc_fetch.py` が取得した分類ごとの一覧
+>   （`.cache/ndc/`）を同一ロジックで正規化する。→ `site/data/ndc/*.json`＋
+>   NDC マスタ `index.json`（→ 本書「今後必要な作業 #2」・
+>   [docs/site-structure.md](../docs/site-structure.md)）
+> - **詳細検索用の索引（件名・著者名）**（後回し・P5）… `fetch` が取得した一件ごとの
+>   詳細 API を合流させて生成する。本書末尾に将来要件として記載するが、
+>   **現フェーズでは実装しない**（`site` 側も詳細検索を現フェーズ対象外としているため）。
 
 ---
 
@@ -34,11 +38,14 @@
 入力:
   source/日本近代文学.json    （OpenSearch 一覧。@graph[0].items に 5,212 件）
   .cache/openbd/             （任意）表紙取得のためのローカルキャッシュ
+  .cache/ndc/                （計画・P2）fetch/ndc_fetch.py が取得した分類ごとの一覧
   fetch の出力（詳細レコード）  （件名・著者名の詳細検索を作る場合のみ＝後回し）
 
 出力:
-  site/data/books.json        （トップページ用。正規化・ownerCount 降順の配列）
+  site/data/books.json        （既定データ。正規化・ownerCount 降順の配列）
   site/data/meta.json         （任意）生成日時・件数・カバー率などの統計
+  site/data/ndc/<記号>.json    （計画・P2）分類ごとの棚データ（books.json と同一スキーマ）
+  site/data/ndc/index.json    （計画・P2）NDC マスタ（記号・分類名・件数・出典）
   site/data/facets.json       （後回し）ファセット索引
   site/data/details.json 等   （後回し）詳細検索用（件名・典拠著者・分類）
 ```
@@ -322,7 +329,7 @@ build/
 実行イメージ:
 
 ```bash
-# トップページ用（一覧のみ・表紙取得なし＝オフラインで完結）
+# 既定データ用（一覧のみ・表紙取得なし＝オフラインで完結）
 python build/build.py --source source/日本近代文学.json --out site/data/
 
 # 表紙取得（OpenBD）も行う
@@ -344,6 +351,7 @@ python build/build.py --source source/日本近代文学.json \
 | `--cache DIR` | OpenBD キャッシュ先 | `.cache/openbd/` |
 | `--pretty` | 整形出力（デバッグ用） | 無効（最小サイズ） |
 | `--limit N` | 先頭 N 件のみ処理（動作テスト用） | 無効（全件） |
+| `--ndc DIR` | NDC 棚データ＋マスタの生成（計画・P2。→「今後必要な作業 #2」） | 無効 |
 | `--details DIR` | 詳細検索索引の生成（後回し） | 無効 |
 
 ---
@@ -415,7 +423,41 @@ python build/build.py --source source/日本近代文学.json \
   - **要検証**: NDL サムネイル API はアクセス元によって 403 を返す場合があることを
     確認済み（datacenter からの検証時）。実行環境からの到達性を先に確認する。
 
-### 2. 整列処理の重複解消（P2）
+### 2. NDC 棚データの生成 `--ndc`（P2 #4・#5）
+
+- **目的**: スタートページの NDC 分類ナビ（[docs/site-structure.md](../docs/site-structure.md)）
+  が使う分類ごとの静的棚データを生成する。
+- **要件**:
+  - `build.py --ndc .cache/ndc/` で、`fetch/ndc_fetch.py` が取得した分類ごとの一覧を
+    読み、既定データと**同一の正規化・整列ロジック（core）**で
+    `site/data/ndc/<分類記号>.json`（`books.json` と同一スキーマ）を生成する。
+  - 1 分類あたりの**件数上限**（既定 10,000 件程度・実測後に確定）を設け、
+    超過分は所蔵館数上位を優先して切り詰める。
+  - **NDC マスタ `site/data/ndc/index.json`** を併せて生成する: 全分類の
+    `{ code, label, count, hasData }`・分類名の出典（NDC Navi・取得日）・生成日時。
+    分類名データは利用許諾の確認（docs/site-structure.md「問題点と対処」#2）が
+    取れるまでコミットしない。
+  - 冪等（同じキャッシュから常に同じ出力）・欠損分類はスキップして `index.json` に
+    `hasData: false` を記録する。
+- **依存**: `fetch/ndc_fetch.py`（[fetch/README.md](../fetch/README.md) A）と
+  分類検索 API の事前調査（P2 #3）。
+
+### 3. NDC・既定データの定期更新（P2 #5）
+
+- **目的**: `source/日本近代文学.json` と `site/data/ndc/` は取得時点のスナップ
+  ショットで、新刊・所蔵数の変化が反映されない。定期的に再取得・再ビルドして
+  鮮度を保つ。
+- **要件**:
+  - **当面は手動運用**: 再取得（fetch）→ 再ビルド（build）→ コミットの手順を確立する。
+    全分類を一度に更新せず分割（例: 週ごとに 1/4）してよい。
+  - 自動化する場合は GitHub Actions の `schedule`（例: 月 1 回）で ①再取得
+    → ②build 実行 → ③差分があれば PR を自動作成する（直接 push はしない）。
+    ワークフロー追加は CI/CD 変更のためユーザーレビューを必須とする。
+  - `meta.json` / `ndc/index.json` の `generatedAt`・件数で更新を確認できるようにする。
+  - 大容量 JSON の更新が Git 履歴を肥大させるため、更新頻度・保存方式は
+    docs/site-structure.md「問題点と対処」#5 に従って選定する。
+
+### 4. 整列処理の重複解消（P3）
 
 - **現状の問題**: `build.py` は `normalize_item()` を map した後に自前で
   `records.sort(...)` しており、`core.normalize.normalize_items()`（正規化＋整列）と
@@ -426,20 +468,7 @@ python build/build.py --source source/日本近代文学.json \
 - **手順**: core に `sort_records()` を追加 → `normalize_items()` と `build.py` から
   呼ぶ → 出力がバイト一致することを確認（冪等の受け入れ条件 7 を再実行）。
 
-### 3. 既定データの定期更新（P4）
-
-- **目的**: `source/日本近代文学.json` は保存時点のスナップショットで、新刊・所蔵数の
-  変化が反映されない。定期的に再取得・再ビルドして鮮度を保つ。
-- **要件**:
-  - GitHub Actions の `schedule`（例: 月 1 回）で ①CiNii から既定キーワードを再取得
-    → ②build 実行 → ③差分があれば PR を自動作成する（直接 push はしない）。
-  - CiNii Research API 移行（core/README.md）後の取得手段で実装する。
-    レート制限・失敗時のリトライは core の取得層に従う。
-  - `meta.json` の `generatedAt`・件数で更新を確認できるようにする。
-- **依存**: CiNii Research 移行の完了が前提。ワークフロー追加は CI/CD 変更のため
-  ユーザーレビューを必須とする。
-
-### 4. 正規化のユニットテスト（P2）
+### 5. 正規化のユニットテスト（P3）
 
 正規化ルール（役割語・「ほか/他」判定・年代解析など）の回帰テストは core 側で
 定義する（→ [core/README.md](../core/README.md)）。build 側は「受け入れ条件 1〜8 を
@@ -456,8 +485,9 @@ CI で自動実行する」形で参加する（books.json のスキーマ検証
   `--` で階層分割して上位件名でも絞り込めるようにする。
 - **典拠著者ファセット** … `foaf:maker` の著者 ID で名寄せした正規形
   （一覧の文字列ベースより厳密な著者名検索を提供する）。
-- **分類ファセット** … `dc:subject` の `NDC` / `NDLC`。NDC は上位桁（類・綱・目）で
-  階層ナビゲーションできるようにする。
+- **分類ファセット** … `dc:subject` の `NDC` / `NDLC`。キーワード検索棚の中を
+  分類で絞り込めるようにする（分類ごとの棚そのもの＝階層ナビゲーションは
+  P2〈NDC 棚データ〉で先行して実現する）。
 
 これらは詳細レコード側にしか無いため、`fetch` の出力を入力に合流させて
 `site/data/facets.json` / `details.json` 等として生成する（構成は実装時に確定）。

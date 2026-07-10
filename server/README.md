@@ -11,6 +11,7 @@
 | パス | 内容 |
 |---|---|
 | `GET /api/search?q=<語>&count=<N>` | 動的検索の結果（books 配列）。付随情報は `X-Result-Source`（cinii / local / local-fallback / cache）・`X-Result-Count` ヘッダで返す |
+| `GET /api/search?q=<語>&ndc=<記号>`（計画・P2） | NDC 分類内の検索（→「今後必要な作業 #1」） |
 | その他のパス | `site/` 配下の静的ファイル配信（同一オリジンなので CORS 不要） |
 
 ## 実行方法
@@ -43,7 +44,25 @@ python server/app.py --port 8000 --live
 
 優先度は [ルート README のロードマップ](../README.md#今後必要な作業ロードマップ) に対応する。
 
-### 1. 運用堅牢化（P2）
+### 1. NDC 分類内の動的検索（P2 #8）
+
+- **目的**: NDC 棚（[docs/site-structure.md](../docs/site-structure.md)）の中を
+  検索語で絞り込めるようにする。
+- **要件**:
+  - `/api/search` に `ndc=<分類記号>`（1〜3 桁）パラメータを追加する。
+    `q` と併用されたら「その分類 かつ その語」の結果を返し、`q` 無しなら
+    分類全体（＝静的 `site/data/ndc/<記号>.json` と同等）を返す。
+  - ライブ時は CiNii の分類検索＋語の複合クエリで取得する
+    （分類検索パラメータの事前調査〈P2 #3〉が前提）。CiNii へ到達できない環境では
+    `site/data/ndc/<記号>.json` を読み込んでローカル絞り込みする
+    （現行の source 代役と同じ思想）。
+  - 返す JSON は従来どおり books 配列（同一スキーマ）・`X-Result-*` ヘッダ。
+    キャッシュキーに `ndc` を含める。
+  - **サーバ未稼働時のフォールバックは site 側で完結する**
+    （クライアントが読み込み済み NDC データを絞り込む。→ [site/README.md](../site/README.md) #2）。
+    server はあくまで「稼働していればより良い検索」を提供する位置づけ。
+
+### 2. 運用堅牢化（P3）
 
 現状は「ローカル検証用の最小実装」であり、公開運用には次の穴がある。
 
@@ -67,7 +86,7 @@ python server/app.py --port 8000 --live
 圧縮 → キャッシュ掃除 → 入力検証 → Expose-Headers → キャッシュ制御の順で
 小さく分けて実装・確認する。
 
-### 2. CiNii Research 移行への追随（P1・core と連動）
+### 3. CiNii Research 移行への追随（P1・core と連動）
 
 - 取得層の移行（appid・ページング・新旧切替フラグ）は
   [core/README.md](../core/README.md) の #1 で行う。server 側の作業は:
@@ -76,7 +95,7 @@ python server/app.py --port 8000 --live
   - ページング取得により 1 検索のコール数が増えるため、**キャッシュ TTL の既定を
     見直す**（長めにして CiNii への負荷を抑える）。
 
-### 3. 公開ホスティング（P3〜P4）
+### 4. 公開ホスティング（P4〜P5）
 
 - **現状の制約**: `http.server` ベースの自前サーバは検証用であり、公開運用には
   WSGI/ASGI 化またはサーバレス関数化が要る。
