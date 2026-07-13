@@ -11,28 +11,61 @@
 
 ---
 
-## A. NDC 分類ごとの一覧取得（計画・P2 #5）
+## A. NDC 分類ごとの一覧取得（実装済み・P2 #5）
 
 全体要件は [docs/site-structure.md](../docs/site-structure.md) を正とする。
-ここではバッチ本体（`ndc_fetch.py`〈仮〉）の要件を定義する。
+バッチ本体 `ndc_fetch.py` は **実装済み（2026-07-13）**。
 
 - **対象**: NDC の類 10・綱 100・目 1,000 ＝ **最大 1,110 分類**。
   1 分類あたり最大 10,000 件程度を想定（上限は件数実測後に確定）。
-- **取得**: CiNii の分類検索（OpenSearch）で分類記号ごとに一覧を取得する。
-  **分類検索パラメータの有無・上位桁での前方一致の可否は実装前の必須調査**
-  （docs/site-structure.md「問題点と対処」#1。調査結果は同書と本書へ記録する）。
+- **取得**: CiNii の分類検索（OpenSearch）で分類記号ごとに `clas=<記号>*`
+  （前方一致）で一覧を取得する。**分類検索パラメータ・前方一致・所蔵館数降順
+  （sortorder=5）は実レスポンス `source/0.json`（clas=0*）で確認済み**
+  （docs/site-structure.md「問題点と対処」#1）。
   CiNii Research 移行（P1）後は新 API（appid・200 件/コールのページング）へ
-  引き継ぐため、取得層は [core/README.md](../core/README.md) の方針に従い差し替え可能に作る。
-- **CLI（想定）**: `python fetch/ndc_fetch.py --out .cache/ndc/ [--codes 910,911] [--level 3]`
+  引き継ぐため、取得は `core.ciniisearch.fetch_response()` に集約してある
+  （[core/README.md](../core/README.md) の方針どおり差し替え可能）。
+- **CLI**:
+  ```bash
+  python fetch/ndc_fetch.py --counts --out .cache/ndc/   # 件数実測（totalResults のみ収集）
+  python fetch/ndc_fetch.py --out .cache/ndc/            # 全 1,110 分類の一覧取得
+  python fetch/ndc_fetch.py --codes 910,911              # 分類記号を指定
+  python fetch/ndc_fetch.py --level 3 --limit 10         # 階層・件数を絞った動作テスト
+  ```
+  主なオプション: `--interval`（リクエスト間隔・既定 1 秒）・`--retries`（既定 4）・
+  `--count`（一覧取得の 1 分類あたり件数・既定 10000）。
 - **出力**: `.cache/ndc/<分類記号>.json`（生レスポンス・Git 管理外）。
+  件数実測モードは `.cache/ndc/counts.json`（分類記号 → totalResults）。
   正規化と `site/data/ndc/` への出力は `build.py --ndc` が担う
   （[build/README.md](../build/README.md)）。
-- **マナー**: 直列取得・リクエスト間隔・連絡先入り User-Agent・指数バックオフ・
-  取得済みスキップ（**冪等・中断再開可能**）・失敗分類の記録と再試行 —
-  下記 B の設計方針と同一。全分類の一括更新を避け、分割実行（例: 週ごとに 1/4）
-  できるようにする。
-- **定期更新**: 当面は手動実行→コミット。GitHub Actions 化は CI/CD 変更のため
-  ユーザーレビューを経て別途行う。
+- **マナー（実装済み）**: 直列取得・リクエスト間隔（既定 1 秒）・連絡先入り
+  User-Agent・指数バックオフ・取得済みスキップ（**冪等・中断再開可能**）・
+  失敗分類の記録（`failed.txt`。再実行で失敗分のみ再試行）— 下記 B の設計方針と
+  同一。`--codes`/`--level` により分割実行（例: 週ごとに 1/4）できる。
+- **定期更新**: 当面は手動実行→コミット。再取得はキャッシュ（`.cache/ndc/`）を
+  削除（または対象分類のみ削除）してから再実行する。GitHub Actions 化は CI/CD
+  変更のためユーザーレビューを経て別途行う。
+
+### 全分類の初期整備手順（ランブック）
+
+CiNii（`ci.nii.ac.jp`）へ到達できる環境で実行する（実行環境によっては
+egress ポリシーで CiNii がブロックされるため注意）。
+
+1. **件数実測**: `python fetch/ndc_fetch.py --counts`
+   （1,110 コール × 間隔 1 秒 ≈ 40 分。中断可・再実行で続きから）
+2. **件数上限の確定**: `counts.json` から `Σ min(件数, 上限) × 419 バイト`で
+   総量を試算し、リポジトリ 1GB 未満に収まる `--ndc-max` を決める
+   （docs/site-structure.md「問題点と対処」#3。10,000 件のままでは最悪 4.6GB）。
+3. **一覧取得**: `python fetch/ndc_fetch.py`
+   （1,110 コール・レスポンス約 5MB/分類 ≈ 数時間。中断可・再実行で続きから。
+   失敗分は `failed.txt` を確認して再実行）
+4. **ビルド**: `python build/build.py --ndc --ndc-max <確定値>`
+   → `site/data/ndc/<記号>.json` ＋ `index.json`
+5. **検証**: もう一度ビルドして棚データがバイト一致（冪等）すること、
+   `index.json` から各分類の件数（count）・取得日（fetchedAt）を確認できること。
+6. **コミット**: `site/data/ndc/` をコミット（生キャッシュ `.cache/ndc/` は
+   Git 管理外のまま）。分類名（label）は NDC Navi の利用許諾確認
+   （docs/site-structure.md #2）が取れるまで null のままとする。
 
 ---
 

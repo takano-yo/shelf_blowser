@@ -351,7 +351,9 @@ python build/build.py --source source/日本近代文学.json \
 | `--cache DIR` | OpenBD キャッシュ先 | `.cache/openbd/` |
 | `--pretty` | 整形出力（デバッグ用） | 無効（最小サイズ） |
 | `--limit N` | 先頭 N 件のみ処理（動作テスト用） | 無効（全件） |
-| `--ndc DIR` | NDC 棚データ＋マスタの生成（計画・P2。→「今後必要な作業 #2」） | 無効 |
+| `--ndc [DIR]` | NDC 棚データ＋マスタの生成モード（実装済み。→「今後必要な作業 #2」） | 無効（DIR 省略時 `.cache/ndc/`） |
+| `--ndc-out DIR` | NDC 棚データの出力先 | `site/data/ndc/` |
+| `--ndc-max N` | NDC 棚 1 分類あたりの件数上限（所蔵館数上位を優先して切り詰め） | `10000`（実測後に確定） |
 | `--details DIR` | 詳細検索索引の生成（後回し） | 無効 |
 
 ---
@@ -423,24 +425,30 @@ python build/build.py --source source/日本近代文学.json \
   - **要検証**: NDL サムネイル API はアクセス元によって 403 を返す場合があることを
     確認済み（datacenter からの検証時）。実行環境からの到達性を先に確認する。
 
-### 2. NDC 棚データの生成 `--ndc`（P2 #4・#5）
+### 2. NDC 棚データの生成 `--ndc`（P2 #4・#5）— 実装済み（2026-07-13）
 
 - **目的**: スタートページの NDC 分類ナビ（[docs/site-structure.md](../docs/site-structure.md)）
   が使う分類ごとの静的棚データを生成する。
-- **要件**:
-  - `build.py --ndc .cache/ndc/` で、`fetch/ndc_fetch.py` が取得した分類ごとの一覧を
-    読み、既定データと**同一の正規化・整列ロジック（core）**で
+- **実装**（`build_ndc()`）:
+  - `build.py --ndc [.cache/ndc/]` で、`fetch/ndc_fetch.py` が取得した分類ごとの
+    一覧を読み、既定データと**同一の正規化・整列ロジック（core）**で
     `site/data/ndc/<分類記号>.json`（`books.json` と同一スキーマ）を生成する。
-  - 1 分類あたりの**件数上限**（既定 10,000 件程度・実測後に確定）を設け、
+  - 1 分類あたりの**件数上限 `--ndc-max`**（既定 10,000 件・実測後に確定）を設け、
     超過分は所蔵館数上位を優先して切り詰める。
-  - **NDC マスタ `site/data/ndc/index.json`** を併せて生成する: 全分類の
-    `{ code, label, count, hasData }`・分類名の出典（NDC Navi・取得日）・生成日時。
-    分類名データは利用許諾の確認（docs/site-structure.md「問題点と対処」#2）が
-    取れるまでコミットしない。
-  - 冪等（同じキャッシュから常に同じ出力）・欠損分類はスキップして `index.json` に
+  - **NDC マスタ `site/data/ndc/index.json`** を併せて生成する: 全 1,110 分類の
+    `{ code, label, count, records, hasData, fetchedAt }`（count＝CiNii の
+    totalResults。キャッシュが無い分類は `counts.json`〈件数実測モードの出力〉から
+    補完）・データ出典（CiNii Books・CC BY 4.0）・生成日時。
+    **分類名（label）は利用許諾の確認（docs/site-structure.md「問題点と対処」#2）が
+    取れるまで null**（`labelSource` も null。確認後に出典・取得日とともに収録する）。
+  - 冪等（同じキャッシュから棚データはバイト一致。`index.json` は `generatedAt`
+    のみ実行時刻で変わる）・キャッシュの無い分類はスキップして `index.json` に
     `hasData: false` を記録する。
-- **依存**: `fetch/ndc_fetch.py`（[fetch/README.md](../fetch/README.md) A）と
-  分類検索 API の事前調査（P2 #3）。
+- **パイロット実績**: `source/0.json`（clas=0* の実レスポンス）を `.cache/ndc/0.json`
+  として全行程を検証済み — 棚データ 10,000 件 4.19MB・スキーマ一致・整列・冪等 OK。
+  `site/data/ndc/0.json` として生成・コミット済み（site の手順 4・5 の開発用）。
+- **依存**: `fetch/ndc_fetch.py`（[fetch/README.md](../fetch/README.md) A。
+  全分類の初期整備手順〈ランブック〉も同書）。
 
 ### 3. NDC・既定データの定期更新（P2 #5）
 
