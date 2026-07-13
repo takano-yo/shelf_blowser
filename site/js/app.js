@@ -754,7 +754,11 @@ let aboutLastFocused = null;
 function openAboutOverlay() {
   if (!els.aboutOverlay) return;
   els.aboutOverlay.hidden = false;
-  if (els.aboutOpenBtn) els.aboutOpenBtn.setAttribute('aria-expanded', 'true');
+  if (els.aboutOpenBtn) {
+    els.aboutOpenBtn.setAttribute('aria-expanded', 'true');
+    els.aboutOpenBtn.textContent = '✖';
+    els.aboutOpenBtn.setAttribute('aria-label', '閉じる');
+  }
   document.body.style.overflow = 'hidden';
   aboutLastFocused = document.activeElement;
   const panel = els.aboutOverlay.querySelector('.overlay__panel');
@@ -765,12 +769,16 @@ function openAboutOverlay() {
 function closeAboutOverlay() {
   if (!els.aboutOverlay) return;
   els.aboutOverlay.hidden = true;
-  if (els.aboutOpenBtn) els.aboutOpenBtn.setAttribute('aria-expanded', 'false');
+  if (els.aboutOpenBtn) {
+    els.aboutOpenBtn.setAttribute('aria-expanded', 'false');
+    els.aboutOpenBtn.textContent = 'データについて';
+    els.aboutOpenBtn.removeAttribute('aria-label');
+  }
   if (els.overlay.hidden) document.body.style.overflow = '';
   if (aboutLastFocused && aboutLastFocused.focus) aboutLastFocused.focus();
 }
 
-// 「データについて」ボタンで開閉をトグルする（×ボタンは持たない）。
+// 「データについて」ボタンで開閉をトグルする（展開時は同じボタンが「×」表示になる）。
 function toggleAboutOverlay() {
   if (!els.aboutOverlay) return;
   if (els.aboutOverlay.hidden) openAboutOverlay();
