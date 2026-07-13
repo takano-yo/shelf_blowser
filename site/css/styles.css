@@ -68,20 +68,16 @@ a { color: var(--sky-deep); }
   cursor: pointer;
 }
 .about-open:hover { color: #fff; background: var(--sky-deep); border-color: var(--sky-deep); }
-/* オーバーレイ表示中はヘッダーがスクロールで隠れていてもボタンを押せるよう、
-   画面右上に固定してトグル操作を継続できるようにする。
-   z-index は表示中（aria-expanded="true"）のときだけ引き上げ、書籍詳細オーバーレイ
-   （.overlay, z-index:50）の上に常に乗ってしまわないようにする。 */
+/* オーバーレイ表示中はボタンの位置を変えず、表示のみ「×」に切り替えて
+   その場で閉じられるようにする（本棚のスクロールは overflow:hidden で止めているため
+   ボタンは常にヘッダーの元の位置に見えている）。
+   z-index はオーバーレイ（.overlay, z-index:50）より上に置いて、パネルに隠れて
+   押せなくならないようにする。flex アイテムなので position を変えずに z-index が効く。 */
 .about-open[aria-expanded="true"] {
-  position: fixed;
   z-index: 60;
-  top: 1rem;
-  right: 1.25rem;
-  margin-left: 0;
   color: #fff;
   background: var(--sky-deep);
   border-color: var(--sky-deep);
-  box-shadow: 0 4px 14px rgba(22, 50, 63, 0.25);
 }
 
 .site-header__title {
