@@ -19,6 +19,10 @@
   --book-w: 9.5rem;
   --cover-ratio: 1 / 1.45;
   --radius: 8px;
+
+  /* 「データについて」オーバーレイの内容がヘッダー（タイトルエリア）の下に隠れないよう、
+     JS 側で開くたびにヘッダーの実高さを計測して上書きする。 */
+  --about-header-h: 0px;
 }
 
 * { box-sizing: border-box; }
@@ -39,7 +43,15 @@ a { color: var(--sky-deep); }
 /* ===== ヘッダー ===== */
 /* タイトル/説明はページ最上部の通常要素。スクロールに追随せず流れて消える。 */
 .site-header {
+  position: relative;
   background: var(--bg);
+}
+/* 「データについて」オーバーレイ（z-index:50）を開いている間だけヘッダーを
+   その手前に持ち上げ、タイトルエリアが隠れないようにする（body に付与される
+   about-overlay-open クラスで切り替え）。書籍詳細オーバーレイ（#overlay）は
+   従来どおりヘッダーより手前に表示され、背景ごと暗く覆う。 */
+body.about-overlay-open .site-header {
+  z-index: 55;
 }
 
 .site-header__bar {
@@ -54,6 +66,9 @@ a { color: var(--sky-deep); }
 
 .site-header__brand { display: flex; align-items: baseline; gap: 0.6rem; flex: 0 1 auto; flex-wrap: wrap; }
 
+/* ラベル「データについて」とアイコン「✖」を同じグリッドセルに重ねて配置し、
+   展開時に表示だけを切り替えることでボタンの位置・サイズを変えない。
+   （幅はグリッドにより両テキストのうち広い方＝ラベルの幅に固定される） */
 .about-open {
   flex: 0 0 auto;
   align-self: center;
@@ -66,19 +81,31 @@ a { color: var(--sky-deep); }
   border: 1px solid var(--line);
   border-radius: 999px;
   cursor: pointer;
+  display: inline-grid;
+  align-items: center;
+  justify-items: center;
+}
+.about-open__label,
+.about-open__icon {
+  grid-area: 1 / 1;
+}
+.about-open__icon {
+  opacity: 0;
+  font-size: 0.95rem;
+  line-height: 1;
 }
 .about-open:hover { color: #fff; background: var(--sky-deep); border-color: var(--sky-deep); }
-/* オーバーレイ表示中はボタンの位置を変えず、表示のみ「×」に切り替えて
-   その場で閉じられるようにする（本棚のスクロールは overflow:hidden で止めているため
-   ボタンは常にヘッダーの元の位置に見えている）。
-   z-index はオーバーレイ（.overlay, z-index:50）より上に置いて、パネルに隠れて
-   押せなくならないようにする。flex アイテムなので position を変えずに z-index が効く。 */
+/* オーバーレイ表示中はラベルを隠してアイコンを表示し、その場で閉じられるようにする
+   （本棚のスクロールは overflow:hidden で止めているためボタンは常にヘッダーの
+   元の位置に見えている）。ヘッダー自体がオーバーレイより手前にあるため、
+   ボタンだけを個別に持ち上げる z-index は不要。 */
 .about-open[aria-expanded="true"] {
-  z-index: 60;
   color: #fff;
   background: var(--sky-deep);
   border-color: var(--sky-deep);
 }
+.about-open[aria-expanded="true"] .about-open__label { opacity: 0; }
+.about-open[aria-expanded="true"] .about-open__icon { opacity: 1; }
 
 .site-header__title {
   margin: 0;
@@ -665,9 +692,12 @@ a { color: var(--sky-deep); }
   transform: none;
   border-left: none;
   border-radius: 0;
-  background: #ececec;
+  background: #c2c2c2;
   box-shadow: none;
   animation: fade-in-full 0.18s ease;
+}
+.overlay__panel--about {
+  padding-top: calc(var(--about-header-h) + 1.5rem);
 }
 .overlay__panel--about .about-body {
   max-width: 42rem;

@@ -747,16 +747,30 @@ function closeOverlay() {
 
 /* ---------- 「データについて」オーバーレイ ---------- */
 // 本棚の上に重ねて表示するだけで本棚自体は裏でそのまま残るため、
-// 閉じたときの本棚のスクロール位置は自動的に維持される。
+// 閉じたときの本棚のスクロール位置は自動的に維持される
+// （開く際にタイトルエリアを見せるため一時的に最上部へ移動するが、閉じるときに元へ戻す）。
 
 let aboutLastFocused = null;
+let aboutScrollY = 0;
+
+// タイトルエリア（ヘッダー）の実高さを CSS 変数に反映し、オーバーレイの本文が
+// ヘッダーの下に隠れないようにする。
+function syncAboutHeaderOffset() {
+  const header = document.querySelector('.site-header');
+  if (!header) return;
+  document.documentElement.style.setProperty('--about-header-h', `${header.offsetHeight}px`);
+}
 
 function openAboutOverlay() {
   if (!els.aboutOverlay) return;
+  aboutScrollY = window.scrollY;
+  window.scrollTo(0, 0); // タイトルエリアが隠れないよう、開く前にページ最上部へ戻す
+  syncAboutHeaderOffset();
+  window.addEventListener('resize', syncAboutHeaderOffset);
+  document.body.classList.add('about-overlay-open');
   els.aboutOverlay.hidden = false;
   if (els.aboutOpenBtn) {
     els.aboutOpenBtn.setAttribute('aria-expanded', 'true');
-    els.aboutOpenBtn.textContent = '✖';
     els.aboutOpenBtn.setAttribute('aria-label', '閉じる');
   }
   document.body.style.overflow = 'hidden';
@@ -769,13 +783,15 @@ function openAboutOverlay() {
 function closeAboutOverlay() {
   if (!els.aboutOverlay) return;
   els.aboutOverlay.hidden = true;
+  document.body.classList.remove('about-overlay-open');
+  window.removeEventListener('resize', syncAboutHeaderOffset);
   if (els.aboutOpenBtn) {
     els.aboutOpenBtn.setAttribute('aria-expanded', 'false');
-    els.aboutOpenBtn.textContent = 'データについて';
     els.aboutOpenBtn.removeAttribute('aria-label');
   }
   if (els.overlay.hidden) document.body.style.overflow = '';
   if (aboutLastFocused && aboutLastFocused.focus) aboutLastFocused.focus();
+  window.scrollTo(0, aboutScrollY); // 開く前の本棚のスクロール位置へ戻す
 }
 
 // 「データについて」ボタンで開閉をトグルする（展開時は同じボタンが「×」表示になる）。
