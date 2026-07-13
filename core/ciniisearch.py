@@ -25,22 +25,31 @@ OPENSEARCH_ENDPOINT = "https://ci.nii.ac.jp/books/opensearch/search"
 USER_AGENT = "shelf_blowser/0.1 (+https://github.com/takano-yo/shelf_blowser)"
 
 
-def build_opensearch_url(query, count=10000, sortorder=5):
+def build_opensearch_url(query=None, count=10000, sortorder=5, clas=None):
     """CiNii OpenSearch のリクエスト URL を組み立てる。
 
     sortorder=5 は所蔵館数（ownerCount）降順。source/*.json と同じ条件に揃える。
     count も source/*.json の生成時と同じ 10000（CiNii が実際に持つ件数までしか
     返らないため、実質「その検索語の全件」を一度の取得で狙う値）に揃える。
+
+    clas は NDC 分類検索（例: "913*"）。上位桁の前方一致は末尾 `*` で指定する
+    （source/0.json ＝ clas=0* の実レスポンスで動作確認済み）。query と clas は
+    どちらか一方だけでもよい。
     """
-    params = {
-        "q": query,
+    params = {}
+    if query:
+        params["q"] = query
+    if clas:
+        params["clas"] = clas
+    params.update({
         "format": "json",
         "count": count,
         "sortorder": sortorder,
         "type": 1,
         "gmd": "_",
-    }
-    return OPENSEARCH_ENDPOINT + "?" + urllib.parse.urlencode(params)
+    })
+    # safe="*": 前方一致の * を実証済みの URL 形（clas=0*）のまま送る
+    return OPENSEARCH_ENDPOINT + "?" + urllib.parse.urlencode(params, safe="*")
 
 
 def items_from_response(data):
@@ -52,25 +61,54 @@ def items_from_response(data):
     return graph.get("items") or []
 
 
-def fetch_live(query, count=10000, sortorder=5, timeout=30, retries=4):
-    """CiNii OpenSearch を実際に取得して items 配列を返す（本番経路）。
+def total_results(data):
+    """OpenSearch レスポンス（dict）から総件数を int で返す。欠損時は None。
 
-    マナー: 明示的 UA を付け、一時エラーは指数バックオフで再試行する。
+    レスポンスの opensearch:totalResults は文字列（例 "230095"）で入る。
     """
-    url = build_opensearch_url(query, count=count, sortorder=sortorder)
+    try:
+        return int(data["@graph"][0]["opensearch:totalResults"])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+
+
+def fetched_at(data):
+    """OpenSearch レスポンス（dict）から生成日時（dc:date）を返す。欠損時は None。"""
+    try:
+        value = data["@graph"][0].get("dc:date")
+    except (KeyError, IndexError, TypeError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+def fetch_response(query=None, count=10000, sortorder=5, clas=None,
+                   timeout=30, retries=4):
+    """CiNii OpenSearch を取得して生レスポンス全体（dict）を返す。
+
+    NDC バッチ（fetch/ndc_fetch.py）のように totalResults・dc:date 等のメタが
+    必要な経路はこちらを使う。マナー: 明示的 UA を付け、一時エラーは指数
+    バックオフで再試行する。
+    """
+    url = build_opensearch_url(query, count=count, sortorder=sortorder, clas=clas)
     delay = 2
     for attempt in range(retries):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            return items_from_response(data)
+                return json.loads(resp.read().decode("utf-8"))
         except Exception:  # noqa: BLE001 — リトライ対象を広く取る
             if attempt == retries - 1:
                 raise
             time.sleep(delay)
             delay *= 2
-    return []
+    return {}
+
+
+def fetch_live(query, count=10000, sortorder=5, timeout=30, retries=4):
+    """CiNii OpenSearch を実際に取得して items 配列を返す（本番経路）。"""
+    data = fetch_response(query, count=count, sortorder=sortorder,
+                          timeout=timeout, retries=retries)
+    return items_from_response(data)
 
 
 # --- オフライン検証・フォールバック用のローカル絞り込み ---
