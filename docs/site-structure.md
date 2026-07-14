@@ -164,7 +164,7 @@ site/data/ndc/*.json ＋ index.json      → コミットして公開
 | 2 | **取得バッチ**: `fetch/ndc_fetch.py` 実装 → 少数分類でパイロット取得 → `build.py --ndc` で正規化・出力 → **実装済み 2026-07-13（パイロット: 分類 0 を `site/data/ndc/0.json` として生成・冪等/スキーマ/整列を検証済み）** | fetch / build |
 | 3 | **全分類の取得・コミット**: 実測にもとづき件数上限・保存方式を確定して全分類分を生成（実行手順は [fetch/README.md](../fetch/README.md) のランブック） | fetch / build |
 | 4 | **本棚ページの初期条件対応**: `?q=` / `?ndc=` の受け取り・URL 状態同期・NDC 棚見出し・クライアント側絞り込み → **完了 2026-07-14**（[site/README](../site/README.md)「URL 状態同期と初期条件」） | site |
-| 5 | **スタートページ実装**: 検索窓・NDC 階層ナビ・出典表示。現行 `index.html` を `shelf.html` へ移設 | site |
+| 5 | **スタートページ実装**: 検索窓・NDC 階層ナビ・出典表示。現行 `index.html` を `shelf.html` へ移設 → **完了 2026-07-14**（[site/README](../site/README.md)「スタートページ」） | site |
 | 6 | **server の分類内検索**: `/api/search` に `ndc` パラメータを追加、静的フォールバックの動作確認 | server |
 | 7 | **定期更新の運用確立**: 手動運用の手順化 →（別途レビューを経て）GitHub Actions 化 | build / fetch |
 

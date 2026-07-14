@@ -114,6 +114,14 @@ body.about-overlay-open .site-header {
 }
 .site-header__title::first-letter { color: var(--sky-deep); }
 
+/* 本棚ページのタイトルはスタートページ（入口）へ戻るリンク。見た目は従来のまま。 */
+.site-header__homelink {
+  color: inherit;
+  text-decoration: none;
+}
+.site-header__homelink:hover,
+.site-header__homelink:focus-visible { text-decoration: underline; }
+
 .site-header__subtitle {
   margin: 0;
   font-size: 0.85rem;
@@ -824,6 +832,156 @@ body.about-overlay-open .site-header {
 .ov__series-list { margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.84rem; color: var(--text); }
 .ov__series-list li { margin: 0.15rem 0; }
 .ov__note { font-size: 0.78rem; color: var(--muted); }
+
+/* ===== スタートページ（入口） ===== */
+/* 検索窓と NDC 分類ナビで初期条件を決めて本棚ページ（shelf.html）へ遷移する。 */
+.start {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 0.5rem 1.25rem 4rem;
+}
+
+.start__lead {
+  margin: 0.5rem 0 1.5rem;
+  color: var(--muted);
+}
+
+.start__section {
+  margin: 0 0 1.5rem;
+  padding: 1.1rem 1.25rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.start__heading {
+  margin: 0 0 0.85rem;
+  font-size: 1.05rem;
+}
+
+/* 検索窓は本棚ページの .search を再利用しつつ、ツールバー用の寄せ（margin-left:auto）
+ * を解除して左寄せ・広めの幅にする。 */
+.start__search {
+  margin-left: 0;
+  max-width: 34rem;
+  order: 0;
+}
+
+.start__note {
+  margin: 0.7rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.start__source-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.start__source-list li { margin-bottom: 0.3rem; }
+
+/* --- NDC 分類ナビ --- */
+.ndc-nav__crumb {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.ndc-nav__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.9rem;
+}
+/* display: flex が hidden 属性（UA の display: none）を上書きしないように明示する。 */
+.ndc-nav__controls[hidden] { display: none; }
+
+.ndc-nav__back {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.ndc-nav__back:hover { border-color: var(--sky-deep); }
+
+/* 「この分類の棚を見る」はアクセント色のボタン風リンク（主要動線）。 */
+.ndc-nav__view {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--accent);
+  border: 1px solid var(--accent-deep);
+  border-radius: var(--radius);
+  text-decoration: none;
+}
+.ndc-nav__view:hover { background: var(--accent-deep); }
+
+.ndc-nav__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.6rem;
+}
+
+.ndc-nav__loading,
+.ndc-nav__error {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 1rem 0;
+  color: var(--muted);
+}
+
+/* 分類ボタン（1・2 桁 = 掘り下げの button / 3 桁 = 棚への a）。見た目は共通。 */
+.ndc-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.6rem 0.8rem;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.ndc-btn:hover:not(:disabled),
+.ndc-btn:focus-visible {
+  border-color: var(--sky-deep);
+  box-shadow: var(--shadow);
+}
+.ndc-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ndc-btn__code {
+  font-weight: 700;
+  color: var(--sky-deep);
+}
+
+.ndc-btn__label {
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.ndc-btn__nolabel {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.ndc-btn__count {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
 
 /* ===== フッター ===== */
 .site-footer {

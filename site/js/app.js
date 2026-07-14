@@ -55,6 +55,7 @@ const els = {
   sortSelect: document.getElementById('sort-select'),
   seriesToggle: document.getElementById('series-toggle'),
   groupToggle: document.getElementById('series-group-toggle'),
+  subtitle: document.getElementById('site-subtitle'),
   ndcHeading: document.getElementById('shelf-heading'),
   ndcHeadingTitle: document.getElementById('shelf-heading-title'),
   ndcHeadingInfo: document.getElementById('shelf-heading-info'),
@@ -85,6 +86,7 @@ let ndcBooks = null;        // NDC 棚の全件（サーバ未稼働時のクラ
 let ndcIndexPromise = null; // data/ndc/index.json の読み込み Promise（取得は 1 回だけ）
 let restoringState = false; // popstate 復元中は URL を書き込まない（履歴を汚さない）
 const DEFAULT_TITLE = document.title;
+const DEFAULT_SUBTITLE = els.subtitle ? els.subtitle.textContent : '';
 
 /* ---------- ユーティリティ ---------- */
 
@@ -1135,11 +1137,14 @@ function renderNdcHeading(code, index) {
 
   els.ndcHeading.hidden = false;
   document.title = `NDC ${code}${label ? ' ' + label : ''} の本棚 — shelf_blowser`;
+  // ヘッダーのサブタイトル（既定データの説明）も NDC 棚の内容へ差し替える。
+  if (els.subtitle) els.subtitle.textContent = `NDC ${code}${label ? ' ' + label : ''} の本棚`;
 }
 
 function hideNdcHeading() {
   if (els.ndcHeading) els.ndcHeading.hidden = true;
   document.title = DEFAULT_TITLE;
+  if (els.subtitle) els.subtitle.textContent = DEFAULT_SUBTITLE;
 }
 
 /* ---------- クライアント側絞り込み（NDC 棚内検索のフォールバック） ---------- */
