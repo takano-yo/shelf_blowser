@@ -353,7 +353,7 @@ python build/build.py --source source/日本近代文学.json \
 | `--limit N` | 先頭 N 件のみ処理（動作テスト用） | 無効（全件） |
 | `--ndc [DIR]` | NDC 棚データ＋マスタの生成モード（実装済み。→「今後必要な作業 #2」） | 無効（DIR 省略時 `.cache/ndc/`） |
 | `--ndc-out DIR` | NDC 棚データの出力先 | `site/data/ndc/` |
-| `--ndc-max N` | NDC 棚 1 分類あたりの件数上限（所蔵館数上位を優先して切り詰め） | `10000`（実測後に確定） |
+| `--ndc-max N` | NDC 棚 1 分類あたりの件数上限（所蔵館数上位を優先して切り詰め） | `1000`（全分類の件数実測にもとづき確定・2026-07-14） |
 | `--details DIR` | 詳細検索索引の生成（後回し） | 無効 |
 
 ---
@@ -433,8 +433,9 @@ python build/build.py --source source/日本近代文学.json \
   - `build.py --ndc [.cache/ndc/]` で、`fetch/ndc_fetch.py` が取得した分類ごとの
     一覧を読み、既定データと**同一の正規化・整列ロジック（core）**で
     `site/data/ndc/<分類記号>.json`（`books.json` と同一スキーマ）を生成する。
-  - 1 分類あたりの**件数上限 `--ndc-max`**（既定 10,000 件・実測後に確定）を設け、
-    超過分は所蔵館数上位を優先して切り詰める。
+  - 1 分類あたりの**件数上限 `--ndc-max`**（既定 1,000 件。全 1,110 分類の
+    件数実測〈延べ 1,869 万件〉にもとづき確定）を設け、超過分は所蔵館数上位を
+    優先して切り詰める。
   - **NDC マスタ `site/data/ndc/index.json`** を併せて生成する: 全 1,110 分類の
     `{ code, label, count, records, hasData, fetchedAt }`（count＝CiNii の
     totalResults。キャッシュが無い分類は `counts.json`〈件数実測モードの出力〉から

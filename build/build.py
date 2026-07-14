@@ -87,7 +87,7 @@ def build(source, out_dir, covers=False, cache=".cache/openbd/",
 # NDC 棚データの生成（--ndc）
 # ---------------------------------------------------------------------------
 
-def build_ndc(cache_dir, out_dir, max_records=10000):
+def build_ndc(cache_dir, out_dir, max_records=1000):
     """`.cache/ndc/` の生レスポンスから NDC 棚データ＋マスタ index.json を生成する。
 
     - 棚データ `<分類記号>.json` は books.json と同一スキーマ・同一整列
@@ -185,9 +185,9 @@ def main(argv=None):
                         "読む。既定 .cache/ndc/）")
     p.add_argument("--ndc-out", default="site/data/ndc/",
                    help="NDC 棚データの出力ディレクトリ")
-    p.add_argument("--ndc-max", type=int, default=10000,
-                   help="NDC 棚 1 分類あたりの件数上限（既定 10000。"
-                        "実測後に確定 → docs/site-structure.md #3）")
+    p.add_argument("--ndc-max", type=int, default=1000,
+                   help="NDC 棚 1 分類あたりの件数上限（既定 1000。"
+                        "全分類の件数実測にもとづき確定 → docs/site-structure.md #3）")
     args = p.parse_args(argv)
 
     if args.ndc is not None:
