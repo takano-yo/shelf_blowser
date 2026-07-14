@@ -392,6 +392,52 @@ body.about-overlay-open .site-header {
   padding: 1.5rem 1.25rem 4rem;
 }
 
+/* NDC 棚の見出し（?ndc=<記号> のとき棚の上に出す）。
+ * 分類記号・分類名・件数・データ取得日・出典を示すカード。 */
+.shelf-heading {
+  margin: 0 0 1.5rem;
+  padding: 0.9rem 1.2rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.shelf-heading__title {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.35;
+}
+
+.shelf-heading__code {
+  margin-right: 0.55rem;
+  color: var(--sky-deep);
+}
+
+.shelf-heading__info {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.shelf-heading__source {
+  margin: 0.25rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* 棚を消さずに知らせる注意メッセージ（読み込み失敗のフォールバック・
+ * サーバ未稼働時のクライアント側絞り込み等）。アクセントの黄で軽く目立たせる。 */
+.shelf-notice {
+  margin: 0 0 1.5rem;
+  padding: 0.6rem 0.95rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: #fdf6d3;
+  border: 1px solid var(--accent-deep);
+  border-radius: var(--radius);
+}
+
 .shelf {
   position: relative; /* 外枠（垂直レール擬似要素）の配置基準 */
   display: grid;
