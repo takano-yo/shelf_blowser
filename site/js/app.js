@@ -13,6 +13,11 @@ const DATA_URL = 'data/books.json';
 // 場合はここを絶対 URL に変えるだけでよい。返る JSON は books.json と同一スキーマ。
 const SEARCH_URL = 'api/search';
 
+// NDC 分類棚の静的データ（build --ndc の出力）。?ndc=<記号> のとき読み込む。
+// マスタ index.json は棚見出し（分類名・件数・取得日・出典）の表示に使う。
+const NDC_INDEX_URL = 'data/ndc/index.json';
+function ndcDataUrl(code) { return `data/ndc/${encodeURIComponent(code)}.json`; }
+
 // 多巻もの判定の閾値（プロトタイプ）。巻数（hasPart 由来の ISBN 数）がこの値以上の
 // ものだけを「多巻のシリーズ的書籍」として扱う。上下(2)/上中下(3)/正続(2) のような
 // 1 冊を少数に分冊しただけのものは閾値未満となり、シリーズ以外（単独）へ回す。
@@ -50,6 +55,11 @@ const els = {
   sortSelect: document.getElementById('sort-select'),
   seriesToggle: document.getElementById('series-toggle'),
   groupToggle: document.getElementById('series-group-toggle'),
+  ndcHeading: document.getElementById('shelf-heading'),
+  ndcHeadingTitle: document.getElementById('shelf-heading-title'),
+  ndcHeadingInfo: document.getElementById('shelf-heading-info'),
+  ndcHeadingSource: document.getElementById('shelf-heading-source'),
+  notice: document.getElementById('shelf-notice'),
 };
 
 // ホバー時に表紙と交代して詳細を表示する使い回しレイヤー（1個を貼り替える）。
@@ -67,7 +77,23 @@ let sortMode = 'default'; // 並べ替えモード（default | year-asc | year-d
 let seriesUngrouped = false;
 const scrollByTab = Object.create(null); // タブ -> 直近のスクロール位置（切替時に保存/復元）
 
+// URL 状態同期（?q= / ?ndc= / tab / sort）。currentQuery / currentNdc は
+// 「いま棚に反映されている初期条件」を表し、URL クエリと相互に同期する。
+let currentQuery = '';      // 検索語（q）。空 = 検索なし
+let currentNdc = '';        // NDC 分類記号（ndc・1〜3 桁）。空 = NDC 棚ではない
+let ndcBooks = null;        // NDC 棚の全件（サーバ未稼働時のクライアント側絞り込みに使う）
+let ndcIndexPromise = null; // data/ndc/index.json の読み込み Promise（取得は 1 回だけ）
+let restoringState = false; // popstate 復元中は URL を書き込まない（履歴を汚さない）
+const DEFAULT_TITLE = document.title;
+
 /* ---------- ユーティリティ ---------- */
+
+/* fetch して JSON を返す（HTTP エラーはステータスコードを例外にして投げる）。 */
+async function fetchJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
 
 function escapeHtml(s) {
   if (s == null) return '';
@@ -547,6 +573,8 @@ function switchTab(tab) {
   const y = scrollByTab[tab] || 0;
   loadUntil(y + window.innerHeight);
   requestAnimationFrame(() => window.scrollTo(0, y));
+
+  syncUrl(true); // タブも URL クエリへ反映（共有・ブックマーク・戻る/進む対応）
 }
 
 /* シリーズの「まとめ解除」を切り替える。シリーズ束を各巻へ分け（多巻単独はそのまま）、
@@ -579,6 +607,8 @@ function changeSort(mode) {
   applyShelfLayout(true);
   window.scrollTo(0, 0);
   maybeLoadMore(); // 先頭に戻った直後、画面を埋めるだけの分は続けて読み込む
+
+  syncUrl(true); // 並べ替えも URL クエリへ反映（共有・ブックマーク・戻る/進む対応）
 }
 
 /* ---------- 棚板（各段の下のデザイン要素） ---------- */
@@ -1024,46 +1054,324 @@ function setBooks(books, query) {
   maybeLoadMore();
 }
 
+/* ---------- 注意メッセージ（棚を消さずに知らせる） ---------- */
+
+/* 読み込み失敗のフォールバックやサーバ未稼働時のクライアント側絞り込みなど、
+ * 「棚は表示できるが知らせておきたいこと」を棚の上に出す。 */
+function showNotice(html) {
+  if (!els.notice) return;
+  els.notice.innerHTML = html;
+  els.notice.hidden = false;
+}
+
+function hideNotice() {
+  if (!els.notice) return;
+  els.notice.hidden = true;
+  els.notice.innerHTML = '';
+}
+
+/* ---------- NDC 棚の見出し ---------- */
+
+/* ISO 8601 の日時文字列から日付部分（YYYY-MM-DD）だけを取り出す。 */
+function dateOnly(s) {
+  return typeof s === 'string' ? s.slice(0, 10) : '';
+}
+
+/* NDC マスタ（data/ndc/index.json）を読み込む。取得は 1 回だけで使い回し、
+ * 失敗時は次回呼び出しで再取得できるようにする。 */
+function loadNdcIndex() {
+  if (!ndcIndexPromise) {
+    ndcIndexPromise = fetchJson(NDC_INDEX_URL);
+    ndcIndexPromise.catch(() => { ndcIndexPromise = null; });
+  }
+  return ndcIndexPromise;
+}
+
+/* NDC 棚の見出し（分類記号・分類名・件数・取得日・出典）を描画して表示する。
+ * index はマスタ（無ければ null）。マスタが読めなくても記号だけで見出しを出す。 */
+function renderNdcHeading(code, index) {
+  if (!els.ndcHeading) return;
+  const entry = (index && Array.isArray(index.classes))
+    ? index.classes.find((c) => c.code === code)
+    : null;
+  const label = (entry && entry.label) || '';
+
+  els.ndcHeadingTitle.innerHTML =
+    `<span class="shelf-heading__code">NDC ${escapeHtml(code)}</span>${escapeHtml(label)}`;
+
+  // 件数・取得日。分類の総件数（count）と収録件数（records）が異なる場合は
+  // 「所蔵館数上位を収録」であることを明示する。
+  const info = [];
+  if (entry) {
+    const total = Number(entry.count).toLocaleString('ja-JP');
+    const records = Number(entry.records).toLocaleString('ja-JP');
+    info.push(entry.count > entry.records
+      ? `全 ${total} 件のうち所蔵館数上位 ${records} 件を収録`
+      : `全 ${records} 件を収録`);
+    if (entry.fetchedAt) info.push(`データ取得日: ${dateOnly(entry.fetchedAt)}`);
+  }
+  els.ndcHeadingInfo.textContent = info.join('　');
+  els.ndcHeadingInfo.hidden = !info.length;
+
+  // 出典: 書誌データ（CiNii Books）と分類名（JLA 公式 NDC データ・CC BY）。
+  const src = [];
+  const ds = index && index.dataSource;
+  if (ds && ds.name) {
+    const name = ds.url
+      ? `<a href="${escapeHtml(ds.url)}" target="_blank" rel="noopener">${escapeHtml(ds.name)}</a>`
+      : escapeHtml(ds.name);
+    src.push(`書誌データ: ${name}${ds.license ? `（${escapeHtml(ds.license)}）` : ''}`);
+  }
+  const ls = index && index.labelSource;
+  if (label && ls && ls.name) {
+    const name = ls.url
+      ? `<a href="${escapeHtml(ls.url)}" target="_blank" rel="noopener">${escapeHtml(ls.name)}</a>`
+      : escapeHtml(ls.name);
+    const pub = ls.publisher ? `・${escapeHtml(ls.publisher)}` : '';
+    src.push(`分類名: ${name}${pub}${ls.license ? `（${escapeHtml(ls.license)}）` : ''}`);
+  }
+  els.ndcHeadingSource.innerHTML = src.join('／');
+  els.ndcHeadingSource.hidden = !src.length;
+
+  els.ndcHeading.hidden = false;
+  document.title = `NDC ${code}${label ? ' ' + label : ''} の本棚 — shelf_blowser`;
+}
+
+function hideNdcHeading() {
+  if (els.ndcHeading) els.ndcHeading.hidden = true;
+  document.title = DEFAULT_TITLE;
+}
+
+/* ---------- クライアント側絞り込み（NDC 棚内検索のフォールバック） ---------- */
+
+/* 1 レコードの検索対象文字列（タイトル・著者・出版社・シリーズ名）を連結して返す。
+ * server のローカル代役（core.ciniisearch.search_local）と同じ思想。 */
+function bookHaystack(b) {
+  const parts = [b.title || '', b.creatorRaw || ''];
+  if (b.creators) parts.push(...b.creators);
+  if (b.publishers) parts.push(...b.publishers);
+  if (b.series) for (const s of b.series) { if (s && s.title) parts.push(s.title); }
+  return parts.join(' ');
+}
+
+/* books 配列を検索語（空白区切りの AND・部分一致）で絞り込む。元配列は変えない。 */
+function filterBooksLocal(books, query) {
+  const terms = query.split(/\s+/).filter(Boolean);
+  if (!terms.length) return books.slice();
+  return books.filter((b) => {
+    const hay = bookHaystack(b);
+    return terms.every((t) => hay.includes(t));
+  });
+}
+
+/* ---------- URL 状態同期（?q= / ?ndc= / tab / sort） ---------- */
+
+const VALID_TABS = new Set(['all', 'personal', 'editorial', 'series']);
+const VALID_SORTS = new Set(['default', 'year-asc', 'year-desc']);
+
+/* URL クエリから状態を読み取る。外部から貼られる URL のため、不正値は既定値に落とす。 */
+function stateFromUrl() {
+  const p = new URLSearchParams(location.search);
+  const ndc = (p.get('ndc') || '').trim();
+  const tab = p.get('tab');
+  const sort = p.get('sort');
+  return {
+    q: (p.get('q') || '').trim(),
+    ndc: /^\d{1,3}$/.test(ndc) ? ndc : '',
+    tab: VALID_TABS.has(tab) ? tab : 'all',
+    sort: VALID_SORTS.has(sort) ? sort : 'default',
+  };
+}
+
+/* 現在の状態を URL クエリへ書き込む。既定値（空の q・all タブ・default 並び）は
+ * 省略して共有しやすい最短の URL を保つ。push=true で履歴に積む（戻る/進む対応）。
+ * popstate からの復元中と、URL が変わらないときは書き込まない（履歴を汚さない）。 */
+function syncUrl(push) {
+  if (restoringState) return;
+  const p = new URLSearchParams();
+  if (currentNdc) p.set('ndc', currentNdc);
+  if (currentQuery) p.set('q', currentQuery);
+  if (activeTab !== 'all') p.set('tab', activeTab);
+  if (sortMode !== 'default') p.set('sort', sortMode);
+  const qs = p.toString();
+  const url = location.pathname + (qs ? `?${qs}` : '');
+  if (url === location.pathname + location.search) return;
+  if (push) history.pushState(null, '', url);
+  else history.replaceState(null, '', url);
+}
+
+/* URL の状態を画面へ反映する（初期表示と popstate＝戻る/進む の両方から呼ぶ）。
+ * q / ndc が変わったときだけデータを読み直し、tab / sort だけの変化は再描画のみ。 */
+async function applyUrlState(isInitial) {
+  const st = stateFromUrl();
+  restoringState = true;
+  try {
+    if (els.searchInput) els.searchInput.value = st.q;
+    const sortChanged = st.sort !== sortMode;
+    if (sortChanged) {
+      sortMode = st.sort; // setBooks / switchTab が引き継ぐよう再描画前に反映する
+      if (els.sortSelect) els.sortSelect.value = st.sort;
+    }
+    const needReload = isInitial || st.ndc !== currentNdc || st.q !== currentQuery;
+    if (needReload) {
+      currentNdc = st.ndc;
+      currentQuery = st.q;
+      if (st.ndc) {
+        await loadNdc(st.ndc);
+        if (st.q && ndcBooks) await searchWithinNdc(st.q);
+      } else if (st.q) {
+        await searchGlobal(st.q, { fallbackToDefault: true });
+      } else {
+        await loadDefault();
+      }
+      // setBooks はタブを「すべて」に戻すため、URL のタブへ切り替え直す。
+      // 読み込み失敗などで対象タブが空のときはメッセージを消さないよう何もしない。
+      if (st.tab !== activeTab && (baseItemsFor(st.tab) || []).length) switchTab(st.tab);
+    } else if (st.tab !== activeTab && (baseItemsFor(st.tab) || []).length) {
+      switchTab(st.tab);
+    } else if (sortChanged) {
+      hideCoverDetail();
+      shelfItems = sortedItems(baseItemsFor(activeTab), sortMode);
+      renderShelf();
+      applyShelfLayout(true);
+      window.scrollTo(0, 0);
+      maybeLoadMore();
+    }
+  } finally {
+    restoringState = false;
+  }
+}
+
+/* ---------- データの読み込み・検索 ---------- */
+
 /* 既定データ（静的 data/books.json）を読み込んで表示する。動的検索サーバが無くても
  * この経路だけで従来どおり本棚が見える（グレースフルデグレード）。 */
-async function loadDefault() {
+async function loadDefault(opts) {
   els.shelf.setAttribute('aria-busy', 'true');
+  if (!(opts && opts.keepNotice)) hideNotice();
+  hideNdcHeading();
   try {
-    const books = await fetch(DATA_URL)
-      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    const books = await fetchJson(DATA_URL);
     setBooks(books, '');
   } catch (err) {
     showShelfMessage(`データの読み込みに失敗しました（${escapeHtml(String(err.message || err))}）。<br>build を実行して <code>site/data/books.json</code> を生成してください。`);
   }
 }
 
-/* 動的検索。検索語で API を叩き、返った books で棚を作り直す。空語なら既定へ戻す。
- * 返却スキーマは books.json と同一なので setBooks() をそのまま流用できる。 */
-async function runSearch(query) {
-  if (!query) { await loadDefault(); window.scrollTo(0, 0); return; }
+/* NDC 分類棚を静的データ（data/ndc/<記号>.json）から読み込んで表示する。
+ * サーバ不要（GitHub Pages のみで完結）。マスタ index.json から分類名・件数・
+ * 取得日・出典を引き、棚上部の見出しに表示する。読めないときは既定データへ
+ * フォールバックする（棚を空のまま終わらせない）。 */
+async function loadNdc(code) {
+  els.shelf.setAttribute('aria-busy', 'true');
+  els.shelf.innerHTML = '<p class="shelf__loading">本棚を読み込み中…</p>';
+  hideNotice();
+  try {
+    // マスタは失敗しても棚は出す（見出しが分類記号のみになるだけ）。
+    const [books, index] = await Promise.all([
+      fetchJson(ndcDataUrl(code)),
+      loadNdcIndex().catch(() => null),
+    ]);
+    ndcBooks = books;
+    renderNdcHeading(code, index);
+    setBooks(books, `ndc:${code}`);
+  } catch (err) {
+    currentNdc = '';
+    ndcBooks = null;
+    hideNdcHeading();
+    showNotice(`NDC 分類「${escapeHtml(code)}」の棚データを読み込めませんでした（${escapeHtml(String(err.message || err))}）。既定の棚を表示します。`);
+    await loadDefault({ keepNotice: true });
+  }
+}
+
+/* 全体の動的検索。検索語で API を叩き、返った books で棚を作り直す。
+ * fallbackToDefault は「?q= 付きで開いたが API が無い」初期表示用の救済で、
+ * メッセージ＋既定棚まで落として棚が空のまま終わらないようにする。 */
+async function searchGlobal(query, opts) {
   shelfItems = [];
   renderedCount = 0;
+  hideNotice();
+  hideNdcHeading();
   els.shelf.setAttribute('aria-busy', 'true');
   els.shelf.innerHTML = '<p class="shelf__loading">検索中…</p>';
   try {
-    const url = `${SEARCH_URL}?q=${encodeURIComponent(query)}`;
-    const books = await fetch(url)
-      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    const books = await fetchJson(`${SEARCH_URL}?q=${encodeURIComponent(query)}`);
     if (!Array.isArray(books) || books.length === 0) {
       showShelfMessage(`「${escapeHtml(query)}」に一致する書誌は見つかりませんでした。`);
       return;
     }
     setBooks(books, query); // 先頭へのスクロールも setBooks 側で行う
   } catch (err) {
-    showShelfMessage(`検索に失敗しました（${escapeHtml(String(err.message || err))}）。<br>検索用サーバ（<code>server/app.py</code>）が起動しているか確認してください。`);
+    const detail = escapeHtml(String(err.message || err));
+    if (opts && opts.fallbackToDefault) {
+      showNotice(`「${escapeHtml(query)}」の検索に失敗しました（${detail}）。検索用サーバに接続できないため、既定の棚を表示します。`);
+      await loadDefault({ keepNotice: true });
+    } else {
+      showShelfMessage(`検索に失敗しました（${detail}）。<br>検索用サーバ（<code>server/app.py</code>）が起動しているか確認してください。`);
+    }
   }
+}
+
+/* NDC 棚内の検索。サーバ稼働時は /api/search?q=<語>&ndc=<記号> で分類内を検索し、
+ * 未稼働（fetch 失敗）時は読み込み済みの NDC データをクライアント側で絞り込む
+ * （タイトル・著者・出版社・シリーズ名の部分一致 AND）。これによりサーバ未稼働
+ * （GitHub Pages のみ）でも NDC 棚内の検索が成立する。 */
+async function searchWithinNdc(query) {
+  shelfItems = [];
+  renderedCount = 0;
+  hideNotice();
+  els.shelf.setAttribute('aria-busy', 'true');
+  els.shelf.innerHTML = '<p class="shelf__loading">検索中…</p>';
+  let books = null;
+  try {
+    const url = `${SEARCH_URL}?q=${encodeURIComponent(query)}&ndc=${encodeURIComponent(currentNdc)}`;
+    const res = await fetchJson(url);
+    if (Array.isArray(res)) books = res;
+  } catch (err) { /* サーバ未稼働 → クライアント側絞り込みへ */ }
+  if (books == null) {
+    books = filterBooksLocal(ndcBooks || [], query);
+    showNotice('検索サーバに接続できないため、読み込み済みの分類データ（所蔵館数上位）から絞り込んでいます。');
+  }
+  if (!books.length) {
+    showShelfMessage(`この分類内で「${escapeHtml(query)}」に一致する書誌は見つかりませんでした。`);
+    return;
+  }
+  setBooks(books, `ndc:${currentNdc}:${query}`);
+}
+
+/* NDC 棚内検索を解除して、読み込み済みの分類全体の棚へ戻す（再取得しない）。 */
+function restoreNdcShelf() {
+  hideNotice();
+  if (!ndcBooks) return;
+  setBooks(ndcBooks, `ndc:${currentNdc}`);
+}
+
+/* 検索の入口（検索窓の送信）。NDC 棚を表示中なら分類内検索、そうでなければ全体検索。
+ * 空送信は「検索の解除」: NDC 棚なら読み込み済みの分類全体へ、通常は既定データへ戻す。
+ * 最後に URL へ状態を書き込む（戻る/進むで検索の前後を行き来できる）。 */
+async function runSearch(query) {
+  query = (query || '').trim();
+  currentQuery = query;
+  if (currentNdc) {
+    if (!query) restoreNdcShelf();
+    else await searchWithinNdc(query);
+  } else if (!query) {
+    await loadDefault();
+    window.scrollTo(0, 0);
+  } else {
+    await searchGlobal(query);
+  }
+  syncUrl(true);
 }
 
 async function init() {
   bindEvents();
   updateToolbarLayout();
   syncSortHeadingOption();
-  await loadDefault();
+  // 戻る/進むで URL の状態（q / ndc / tab / sort）に追随する。
+  window.addEventListener('popstate', () => { applyUrlState(false); });
+  // URL クエリから初期条件を復元して最初の棚を作る（クエリなしは既定データ＝従来どおり）。
+  await applyUrlState(true);
 }
 
 if (document.readyState === 'loading') {
