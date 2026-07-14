@@ -165,7 +165,7 @@ site/data/ndc/*.json ＋ index.json      → コミットして公開
 | 3 | **全分類の取得・コミット**: 実測にもとづき件数上限・保存方式を確定して全分類分を生成（実行手順は [fetch/README.md](../fetch/README.md) のランブック） | fetch / build |
 | 4 | **本棚ページの初期条件対応**: `?q=` / `?ndc=` の受け取り・URL 状態同期・NDC 棚見出し・クライアント側絞り込み → **完了 2026-07-14**（[site/README](../site/README.md)「URL 状態同期と初期条件」） | site |
 | 5 | **スタートページ実装**: 検索窓・NDC 階層ナビ・出典表示。現行 `index.html` を `shelf.html` へ移設 → **完了 2026-07-14**（[site/README](../site/README.md)「スタートページ」） | site |
-| 6 | **server の分類内検索**: `/api/search` に `ndc` パラメータを追加、静的フォールバックの動作確認 | server |
+| 6 | **server の分類内検索**: `/api/search` に `ndc` パラメータを追加、静的フォールバックの動作確認 → **完了 2026-07-14**（[server/README](../server/README.md)「提供するもの」） | server |
 | 7 | **定期更新の運用確立**: 手動運用の手順化 →（別途レビューを経て）GitHub Actions 化 | build / fetch |
 
 手順 4 と 5 はデータが少数分類しか無くても着手できる（手順 2 のパイロット出力で開発する）。

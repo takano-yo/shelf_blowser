@@ -104,9 +104,13 @@ def fetch_response(query=None, count=10000, sortorder=5, clas=None,
     return {}
 
 
-def fetch_live(query, count=10000, sortorder=5, timeout=30, retries=4):
-    """CiNii OpenSearch を実際に取得して items 配列を返す（本番経路）。"""
-    data = fetch_response(query, count=count, sortorder=sortorder,
+def fetch_live(query, count=10000, sortorder=5, timeout=30, retries=4, clas=None):
+    """CiNii OpenSearch を実際に取得して items 配列を返す（本番経路）。
+
+    clas は NDC 分類検索（例: "913*"）。query と併用すると「その分類 かつ その語」の
+    複合クエリになる（server の分類内検索が使う）。
+    """
+    data = fetch_response(query, count=count, sortorder=sortorder, clas=clas,
                           timeout=timeout, retries=retries)
     return items_from_response(data)
 

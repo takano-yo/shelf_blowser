@@ -10,8 +10,8 @@
 
 | パス | 内容 |
 |---|---|
-| `GET /api/search?q=<語>&count=<N>` | 動的検索の結果（books 配列）。付随情報は `X-Result-Source`（cinii / local / local-fallback / cache）・`X-Result-Count` ヘッダで返す |
-| `GET /api/search?q=<語>&ndc=<記号>`（計画・P2） | NDC 分類内の検索（→「今後必要な作業 #1」） |
+| `GET /api/search?q=<語>&count=<N>` | 動的検索の結果（books 配列）。付随情報は `X-Result-Source`（cinii / local / local-fallback / ndc-local / ndc-local-fallback / cache）・`X-Result-Count` ヘッダで返す |
+| `GET /api/search?q=<語>&ndc=<記号>` | NDC 分類内の検索（1〜3 桁）。`q` と併用で「その分類 かつ その語」、`q` 無しなら分類全体（＝静的 `site/data/ndc/<記号>.json` と同等）。ライブ時は CiNii の分類検索（`clas=<記号>*`・前方一致）との複合クエリ、ローカル時・ライブ失敗時は静的 NDC データの絞り込み。不正な記号は 400、データ未整備の分類は 404 |
 | その他のパス | `site/` 配下の静的ファイル配信（同一オリジンなので CORS 不要） |
 
 ## 実行方法
@@ -31,7 +31,7 @@ python server/app.py --port 8000 --live
 
 - 検索語ごとの結果（書影付与後）を `server/cache/` に保存し、同じ語の再取得を
   避ける（CiNii・OpenBD へのマナー・応答速度）。キーは
-  `live フラグ | count | 検索語` の SHA-1。
+  `live フラグ | covers フラグ | count | NDC 分類記号 | 検索語` の SHA-1。
 - TTL は既定 3600 秒。**Git 管理外・冪等・再生成可能**（`build` の OpenBD
   キャッシュと同じ思想）。
 - 書影は `core.openbd.enrich_covers()` で ISBN 単位に `.cache/openbd/` へ
@@ -46,21 +46,15 @@ python server/app.py --port 8000 --live
 
 ### 1. NDC 分類内の動的検索（P2 #8）
 
-- **目的**: NDC 棚（[docs/site-structure.md](../docs/site-structure.md)）の中を
-  検索語で絞り込めるようにする。
-- **要件**:
-  - `/api/search` に `ndc=<分類記号>`（1〜3 桁）パラメータを追加する。
-    `q` と併用されたら「その分類 かつ その語」の結果を返し、`q` 無しなら
-    分類全体（＝静的 `site/data/ndc/<記号>.json` と同等）を返す。
-  - ライブ時は CiNii の分類検索＋語の複合クエリで取得する
-    （分類検索パラメータの事前調査〈P2 #3〉が前提）。CiNii へ到達できない環境では
-    `site/data/ndc/<記号>.json` を読み込んでローカル絞り込みする
-    （現行の source 代役と同じ思想）。
-  - 返す JSON は従来どおり books 配列（同一スキーマ）・`X-Result-*` ヘッダ。
-    キャッシュキーに `ndc` を含める。
-  - **サーバ未稼働時のフォールバックは site 側で完結する**
-    （クライアントが読み込み済み NDC データを絞り込む。→ [site/README.md](../site/README.md) #2）。
-    server はあくまで「稼働していればより良い検索」を提供する位置づけ。
+- **→ 実装済み（2026-07-14）。** 仕様は上記「提供するもの」の表を参照。
+  ライブ時は `core.ciniisearch.fetch_live(..., clas="<記号>*")` の複合クエリ、
+  ローカル時・ライブ失敗時は `search_ndc_static()` が静的
+  `site/data/ndc/<記号>.json`（正規化・整列済み）を絞り込む。絞り込み対象
+  （タイトル・著者・出版社・シリーズ名）は site 側のクライアント絞り込みと同一。
+  キャッシュキーに `ndc` を含む。
+  **サーバ未稼働時のフォールバックは site 側で完結する**
+  （クライアントが読み込み済み NDC データを絞り込む。→ [site/README.md](../site/README.md)）。
+  server はあくまで「稼働していればより良い検索」を提供する位置づけ。
 
 ### 2. 運用堅牢化（P3）
 
