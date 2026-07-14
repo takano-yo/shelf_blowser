@@ -697,7 +697,12 @@ body.about-overlay-open .site-header {
   animation: fade-in-full 0.18s ease;
 }
 .overlay__panel--about {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   padding-top: calc(var(--about-header-h) + 1.5rem);
+  padding-bottom: 1.5rem;
 }
 .overlay__panel--about .about-body {
   max-width: 42rem;
@@ -706,7 +711,7 @@ body.about-overlay-open .site-header {
 .about-body__title { margin: 0 0 1.2rem; font-size: 1.3rem; }
 .about-body__section { margin: 0 0 1.4rem; }
 .about-body__section:last-child { margin-bottom: 0; }
-.about-body__section h3 { margin: 0 0 0.4rem; font-size: 1rem; color: var(--sky-deep); }
+.about-body__section h3 { margin: 0 0 0.4rem; font-size: 1rem; color: #0b4a5c; }
 .about-body__section p { margin: 0 0 0.5rem; font-size: 0.9rem; }
 .about-body__section p:last-child { margin-bottom: 0; }
 .about-body__section ul { margin: 0.3rem 0 0; padding-left: 1.2rem; font-size: 0.88rem; }
