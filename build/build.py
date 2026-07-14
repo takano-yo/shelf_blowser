@@ -95,7 +95,9 @@ def build_ndc(cache_dir, out_dir, max_records=10000):
       優先して切り詰める（docs/site-structure.md 問題点と対処 #3）。
     - index.json は全 1,110 分類の { code, label, count, hasData } ほかを持つ。
       count はキャッシュの totalResults、無ければ counts.json（件数実測モードの
-      出力）から補う。label は NDC Navi の利用許諾確認（同 #2）まで null。
+      出力）から補う。label は labels.json（fetch/ndc_labels.py が JLA 公式の
+      NDC9 版 CC-BY データから生成）があれば収録し、無い分類（欠番）や
+      labels.json 自体が無い場合は null（docs/site-structure.md 同 #2）。
     - 冪等: 同じキャッシュから常に同じ棚データを生成する（棚ファイルはバイト
       一致。index.json は generatedAt のみ実行時刻で変わる）。
     """
@@ -108,11 +110,19 @@ def build_ndc(cache_dir, out_dir, max_records=10000):
     if counts_path.is_file():
         counts = json.loads(counts_path.read_text(encoding="utf-8")).get("counts", {})
 
+    labels, label_source = {}, None
+    labels_path = cache_dir / "labels.json"
+    if labels_path.is_file():
+        ldata = json.loads(labels_path.read_text(encoding="utf-8"))
+        labels = ldata.get("labels", {})
+        label_source = ldata.get("source")
+
     classes = []
     built = skipped = 0
     for code in all_codes():
         cache_path = cache_dir / f"{code}.json"
-        entry = {"code": code, "label": None, "count": counts.get(code),
+        entry = {"code": code, "label": labels.get(code),
+                 "count": counts.get(code),
                  "records": 0, "hasData": False, "fetchedAt": None}
         if cache_path.is_file():
             data = json.loads(cache_path.read_text(encoding="utf-8"))
@@ -146,10 +156,9 @@ def build_ndc(cache_dir, out_dir, max_records=10000):
             "url": "https://ci.nii.ac.jp/books/",
             "license": "CC BY 4.0",
         },
-        # 分類名（label）は NDC Navi の利用条件確認後に収録する
-        # （docs/site-structure.md「問題点と対処」#2）。確認後にここへ
-        # 出典（サービス名・URL・取得日）を設定し、各 label を埋める。
-        "labelSource": None,
+        # 分類名の出典。labels.json（JLA 公式 NDC9 版・CC-BY）から転記する。
+        # 無い場合は null（分類名未収録 → docs/site-structure.md #2）。
+        "labelSource": label_source,
         "classes": classes,
     }
     (out_dir / "index.json").write_text(

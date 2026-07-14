@@ -439,8 +439,10 @@ python build/build.py --source source/日本近代文学.json \
     `{ code, label, count, records, hasData, fetchedAt }`（count＝CiNii の
     totalResults。キャッシュが無い分類は `counts.json`〈件数実測モードの出力〉から
     補完）・データ出典（CiNii Books・CC BY 4.0）・生成日時。
-    **分類名（label）は利用許諾の確認（docs/site-structure.md「問題点と対処」#2）が
-    取れるまで null**（`labelSource` も null。確認後に出典・取得日とともに収録する）。
+    **分類名（label）は `.cache/ndc/labels.json`（`fetch/ndc_labels.py` が
+    JLA 公式 NDC9 版 CC-BY データから抽出）から収録**し、出典を `labelSource` に
+    持つ。labels.json が無い場合と NDC9 の欠番は null
+    （docs/site-structure.md「問題点と対処」#2）。
   - 冪等（同じキャッシュから棚データはバイト一致。`index.json` は `generatedAt`
     のみ実行時刻で変わる）・キャッシュの無い分類はスキップして `index.json` に
     `hasData: false` を記録する。

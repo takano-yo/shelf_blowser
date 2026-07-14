@@ -31,7 +31,15 @@
   python fetch/ndc_fetch.py --out .cache/ndc/            # 全 1,110 分類の一覧取得
   python fetch/ndc_fetch.py --codes 910,911              # 分類記号を指定
   python fetch/ndc_fetch.py --level 3 --limit 10         # 階層・件数を絞った動作テスト
+  python fetch/ndc_labels.py                             # 分類名の抽出（下記）
   ```
+- **分類名（`ndc_labels.py`）**: JLA 公式の
+  [NDC 新訂9版データ（NDC-LD・CC-BY）](https://www.jla.or.jp/committees/bunrui/ndc-data/)
+  から 1〜3 桁 1,110 分類の分類名（skos:prefLabel@ja）を抽出し
+  `.cache/ndc/labels.json` を生成する（NDC9 の欠番 60 分類は収録されず
+  label: null になる）。`build.py --ndc` が labels.json を読んで index.json に
+  分類名と出典（labelSource）を収録する。NDC マスタは分類の改訂がない限り
+  不変なので再取得不要。
   主なオプション: `--interval`（リクエスト間隔・既定 1 秒）・`--retries`（既定 4）・
   `--count`（一覧取得の 1 分類あたり件数・既定 10000）。
 - **出力**: `.cache/ndc/<分類記号>.json`（生レスポンス・Git 管理外）。
@@ -59,13 +67,14 @@ egress ポリシーで CiNii がブロックされるため注意）。
 3. **一覧取得**: `python fetch/ndc_fetch.py`
    （1,110 コール・レスポンス約 5MB/分類 ≈ 数時間。中断可・再実行で続きから。
    失敗分は `failed.txt` を確認して再実行）
-4. **ビルド**: `python build/build.py --ndc --ndc-max <確定値>`
-   → `site/data/ndc/<記号>.json` ＋ `index.json`
-5. **検証**: もう一度ビルドして棚データがバイト一致（冪等）すること、
-   `index.json` から各分類の件数（count）・取得日（fetchedAt）を確認できること。
-6. **コミット**: `site/data/ndc/` をコミット（生キャッシュ `.cache/ndc/` は
-   Git 管理外のまま）。分類名（label）は NDC Navi の利用許諾確認
-   （docs/site-structure.md #2）が取れるまで null のままとする。
+4. **分類名**: `python fetch/ndc_labels.py`（初回のみ。`.cache/ndc/labels.json` を生成）
+5. **ビルド**: `python build/build.py --ndc --ndc-max <確定値>`
+   → `site/data/ndc/<記号>.json` ＋ `index.json`（分類名・出典入り）
+6. **検証**: もう一度ビルドして棚データがバイト一致（冪等）すること、
+   `index.json` から各分類の件数（count）・取得日（fetchedAt）・分類名（label）を
+   確認できること。
+7. **コミット**: `site/data/ndc/` をコミット（生キャッシュ `.cache/ndc/` は
+   Git 管理外のまま）。
 
 ---
 
