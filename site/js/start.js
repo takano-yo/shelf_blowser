@@ -3,12 +3,14 @@
 /* shelf_blowser — スタートページ（入口）
  * 検索窓は素の GET フォームで shelf.html?q=<語> へ遷移する（JS 不要）。
  * このスクリプトは NDC 分類ナビ（類目 1 桁 → 綱目 2 桁 → 細目 3 桁の 3 階層・
- * 各階層 10 ボタン）を NDC マスタ data/ndc/index.json から描画する。
+ * 各階層 10 ボタンを 横5×縦2 で配置）を NDC マスタ data/ndc/index.json から描画する。
  *  - 1・2 桁のボタン = その分類を選んで 1 つ下の階層を表示する（掘り下げ）。
  *  - 3 桁のボタン    = 選択＝遷移（shelf.html?ndc=<3桁> へのリンク）。
  *  - 「上の階層へ戻る」= 1 つ上の階層へ戻る。
  *  - 「この分類の棚を見る」= 1・2 桁の段階で、それ以上絞り込まずに
  *    shelf.html?ndc=<記号> へ遷移する。
+ * 階層移動はボタン群（5×2）を横スライドで切り替える。掘り下げ＝現ボタンが左へ流れ
+ * 右から新ボタンが出る／戻る＝現ボタンが右へ流れ左から新ボタンが出る。
  * データ未整備・0 件の分類はボタンを無効表示にする（現データでは全分類に件数あり）。
  */
 
@@ -20,11 +22,16 @@ const els = {
   controls: document.getElementById('ndc-controls'),
   back: document.getElementById('ndc-back'),
   view: document.getElementById('ndc-view'),
-  grid: document.getElementById('ndc-grid'),
+  viewport: document.getElementById('ndc-viewport'),
 };
+
+const prefersReducedMotion =
+  window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 let byCode = new Map(); // 分類記号 -> { code, label, count, records, hasData, fetchedAt }
 let path = '';          // 選択済みの上位記号。'' = 類目選択中 / '9' = 綱目選択中 / '91' = 細目選択中
+let activeGrid = null;  // 現在表示中の .ndc-nav__grid 要素
+let animating = false;  // スライド中フラグ（多重操作防止）
 
 function escapeHtml(s) {
   if (s == null) return '';
@@ -51,33 +58,17 @@ function codeWithLabel(code) {
   return label ? `${code} ${label}` : code;
 }
 
-/* 現在の階層で表示する 10 個の分類記号（path の下位 0〜9）。 */
-function codesForPath() {
+/* 指定 path の下位 0〜9 の 10 個の分類記号。 */
+function codesForPath(forPath) {
   const out = [];
-  for (let i = 0; i < 10; i++) out.push(path + String(i));
+  for (let i = 0; i < 10; i++) out.push(forPath + String(i));
   return out;
 }
 
-/* 現在の path に応じてナビ全体（パンくず・操作ボタン・分類ボタン 10 個）を描き直す。 */
-function render() {
-  const depth = path.length; // 0 = 類目 / 1 = 綱目 / 2 = 細目 を選択中
-
-  // パンくず（いまどの階層のどの分類を選んでいるか）
-  if (depth === 0) {
-    els.crumb.textContent = '類目（1 桁・10 区分）から選んでください。分類を選ぶと下の階層へ進みます。';
-    els.controls.hidden = true;
-  } else {
-    const parts = [];
-    for (let i = 1; i <= depth; i++) parts.push(codeWithLabel(path.slice(0, i)));
-    const next = depth === 1 ? '綱目（2 桁）' : '細目（3 桁）';
-    els.crumb.textContent = `選択中: ${parts.join(' › ')} — ${next}を選ぶか、この分類のまま棚を見られます。`;
-    els.controls.hidden = false;
-    els.view.href = shelfUrl(path);
-    els.view.textContent = `この分類（${codeWithLabel(path)}）の棚を見る →`;
-  }
-
-  // 分類ボタン（各階層 10 個）。3 桁は選択＝遷移なのでリンク、1・2 桁は掘り下げボタン。
-  const html = codesForPath().map((code) => {
+/* 指定 path の分類ボタン 10 個ぶんの HTML。
+ * 3 桁は選択＝遷移なのでリンク、1・2 桁は掘り下げボタン。 */
+function gridHtml(forPath) {
+  return codesForPath(forPath).map((code) => {
     const e = byCode.get(code);
     const label = e && e.label;
     const disabled = !e || !e.hasData || !e.count;
@@ -97,24 +88,94 @@ function render() {
                     ${disabled ? 'disabled' : ''}
                     aria-label="NDC ${escapeHtml(codeWithLabel(code))} ${code.length === 3 ? 'の棚を見る' : 'を選ぶ'}">${inner}</button>`;
   }).join('');
-  els.grid.innerHTML = html;
+}
+
+/* 5×2 のボタングリッド要素を生成する。 */
+function makeGrid(forPath) {
+  const g = document.createElement('div');
+  g.className = 'ndc-nav__grid';
+  g.innerHTML = gridHtml(forPath);
+  return g;
+}
+
+/* パンくず・操作ボタン（戻る／この分類の棚を見る）を現在の path に合わせて更新する。 */
+function updateChrome() {
+  const depth = path.length; // 0 = 類目 / 1 = 綱目 / 2 = 細目 を選択中
+  if (depth === 0) {
+    els.crumb.textContent = '類目（1 桁・10 区分）から選んでください。分類を選ぶと下の階層へ進みます。';
+    els.controls.hidden = true;
+  } else {
+    const parts = [];
+    for (let i = 1; i <= depth; i++) parts.push(codeWithLabel(path.slice(0, i)));
+    const next = depth === 1 ? '綱目（2 桁）' : '細目（3 桁）';
+    els.crumb.textContent = `選択中: ${parts.join(' › ')} — ${next}を選ぶか、この分類のまま棚を見られます。`;
+    els.controls.hidden = false;
+    els.view.href = shelfUrl(path);
+    els.view.textContent = `この分類（${codeWithLabel(path)}）の棚を見る →`;
+  }
+}
+
+/* 階層移動。direction: 'forward'（掘り下げ）/ 'back'（戻る）。
+ * forward = 現ボタンが左へ流れ右から新ボタン、back = 逆向き。 */
+function navigate(newPath, direction) {
+  if (animating) return;
+  path = newPath;
+  updateChrome();
+
+  const outgoing = activeGrid;
+  // 初回描画・モーション無効時はスライドせず即差し替え。
+  if (!outgoing || prefersReducedMotion) {
+    const g = makeGrid(newPath);
+    els.viewport.replaceChildren(g);
+    activeGrid = g;
+    return;
+  }
+
+  animating = true;
+  const forward = direction !== 'back';
+  const incoming = makeGrid(newPath);
+
+  // アニメーション中は 2 枚のグリッドが重なるため、ビューポート高さを固定して崩れを防ぐ。
+  els.viewport.style.height = `${outgoing.offsetHeight}px`;
+  els.viewport.classList.add('is-animating');
+
+  incoming.style.transform = `translateX(${forward ? '100%' : '-100%'})`;
+  incoming.style.opacity = '0';
+  els.viewport.appendChild(incoming);
+  void incoming.offsetWidth; // 初期位置を確定させてからトランジションを開始（reflow）
+
+  outgoing.style.transform = `translateX(${forward ? '-100%' : '100%'})`;
+  outgoing.style.opacity = '0';
+  incoming.style.transform = 'translateX(0)';
+  incoming.style.opacity = '1';
+  activeGrid = incoming;
+
+  const done = () => {
+    if (!animating) return;
+    animating = false;
+    outgoing.remove();
+    els.viewport.classList.remove('is-animating');
+    els.viewport.style.height = '';
+    incoming.style.transform = '';
+    incoming.style.opacity = '';
+  };
+  incoming.addEventListener('transitionend', done, { once: true });
+  setTimeout(done, 480); // transitionend が来ない場合のフォールバック
 }
 
 function bindEvents() {
-  // 1・2 桁のボタン = 掘り下げ（3 桁はリンクなのでブラウザの遷移に任せる）
-  els.grid.addEventListener('click', (e) => {
+  // ビューポートに委譲。1・2 桁のボタン = 掘り下げ（3 桁はリンクなので既定遷移に任せる）。
+  els.viewport.addEventListener('click', (e) => {
     const btn = e.target.closest('button.ndc-btn[data-code]');
     if (!btn || btn.disabled) return;
     const code = btn.dataset.code;
     if (code.length >= 3) return;
-    path = code;
-    render();
+    navigate(code, 'forward');
   });
 
   els.back.addEventListener('click', () => {
     if (!path) return;
-    path = path.slice(0, -1);
-    render();
+    navigate(path.slice(0, -1), 'back');
   });
 }
 
@@ -126,9 +187,11 @@ async function init() {
     const index = await r.json();
     for (const c of index.classes || []) byCode.set(c.code, c);
     if (!byCode.size) throw new Error('classes が空です');
-    render();
+    updateChrome();
+    activeGrid = makeGrid(path);
+    els.viewport.replaceChildren(activeGrid);
   } catch (err) {
-    els.grid.innerHTML =
+    els.viewport.innerHTML =
       `<p class="ndc-nav__error">分類データ（data/ndc/index.json）を読み込めませんでした（${escapeHtml(String(err.message || err))}）。<br>キーワード検索、または <a href="shelf.html">既定の棚</a> をご利用ください。</p>`;
   }
 }

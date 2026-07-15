@@ -5,25 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>shelf_blowser — 本棚ブラウジングの入口</title>
   <meta name="description" content="キーワードまたは NDC 分類（日本十進分類法）から入る、書誌データの本棚ブラウジング">
-  <link rel="stylesheet" href="css/styles.css?v=20260714b">
+  <link rel="stylesheet" href="css/styles.css?v=20260715a">
 </head>
-<body>
-  <header class="site-header">
-    <div class="site-header__bar">
-      <div class="site-header__brand">
-        <h1 class="site-header__title">shelf_blowser</h1>
-        <p class="site-header__subtitle">本を棚で眺めて探す</p>
-      </div>
-    </div>
-  </header>
-
+<body class="start-page">
   <main class="start">
-    <p class="start__lead">キーワード、または NDC 分類（日本十進分類法）から本棚へ入れます。</p>
+    <!-- 検索エリアの上に置くキャッチコピー（中央寄せ・モダンなゴシック） -->
+    <p class="start__copy">今日はどこから見ようか？</p>
 
     <!-- 検索窓: 素の GET フォームで shelf.html?q=<語> へ遷移する。
          検索の実行自体は本棚ページ側が行い、スタートページは API を叩かない。 -->
-    <section class="start__section" aria-labelledby="start-search-heading">
-      <h2 class="start__heading" id="start-search-heading">キーワードから探す</h2>
+    <section class="start__section start__section--search" aria-label="キーワード検索">
       <form class="search start__search" action="shelf.html" method="get" role="search" aria-label="書誌検索">
         <input
           class="search__input"
@@ -35,41 +26,32 @@
           autocomplete="off">
         <button class="search__button" type="submit" aria-label="検索">検索</button>
       </form>
-      <p class="start__note">検索せずにそのまま眺める: <a href="shelf.html">既定の棚（日本近代文学）を見る →</a></p>
+      <p class="start__note">
+        <a href="https://ci.nii.ac.jp/books/" target="_blank" rel="noopener">CiNii Books</a> を API で検索します（サーバー未稼働時は下の分類から）
+      </p>
     </section>
 
     <!-- NDC 分類ナビ: 類目（1桁）→ 綱目（2桁）→ 細目（3桁）を各階層 10 個の
-         ボタンで掘り下げる。内容は js/start.js が data/ndc/index.json から描画する。
-         1・2 桁の段階でも「この分類の棚を見る」で shelf.html?ndc=<記号> へ遷移できる。 -->
-    <section class="start__section" aria-labelledby="start-ndc-heading">
-      <h2 class="start__heading" id="start-ndc-heading">分類から探す（NDC・日本十進分類法）</h2>
-      <nav class="ndc-nav" id="ndc-nav" aria-label="NDC 分類ナビゲーション">
+         ボタン（横5×縦2）で掘り下げる。内容は js/start.js が描画し、
+         階層移動時はボタン群が横にスライドして切り替わる。 -->
+    <section class="start__section start__section--ndc" aria-label="NDC 分類ナビゲーション">
+      <nav class="ndc-nav" id="ndc-nav">
         <p class="ndc-nav__crumb" id="ndc-crumb"></p>
         <div class="ndc-nav__controls" id="ndc-controls" hidden>
           <button class="ndc-nav__back" type="button" id="ndc-back">← 上の階層へ戻る</button>
           <a class="ndc-nav__view" id="ndc-view" href="shelf.html"></a>
         </div>
-        <div class="ndc-nav__grid" id="ndc-grid" aria-live="polite">
+        <div class="ndc-nav__viewport" id="ndc-viewport">
           <p class="ndc-nav__loading" id="ndc-loading">分類データを読み込み中…</p>
         </div>
+        <!-- 出典（分類名の提供元・ライセンス・リンクの明記）を分類エリア内に集約 -->
+        <p class="ndc-nav__source">
+          出典 : <a href="https://www.jla.or.jp/committees/bunrui/ndc-data/" target="_blank" rel="noopener">日本図書館協会 NDC-LD</a> NDC9版（CC BY ライセンス）
+        </p>
       </nav>
-    </section>
-
-    <!-- 出典表示（分類名の提供元・ライセンス・リンクの明記は要件） -->
-    <section class="start__section" aria-labelledby="start-source-heading">
-      <h2 class="start__heading" id="start-source-heading">出典</h2>
-      <ul class="start__source-list">
-        <li>分類名: <a href="https://www.jla.or.jp/committees/bunrui/ndc-data/" target="_blank" rel="noopener">日本十進分類法 新訂9版データ（NDC-LD）</a>（提供: 日本図書館協会・ライセンス: CC BY）を使用しています。</li>
-        <li>書誌データ: <a href="https://support.nii.ac.jp/ja/cib/api/b_opensearch" target="_blank" rel="noopener">CiNii Books OpenSearch API</a>（国立情報学研究所・CC BY 4.0）から取得しています。</li>
-        <li>書影（表紙画像）: <a href="https://openbd.jp/" target="_blank" rel="noopener">openBD API</a> から取得し、書籍の紹介を目的として使用しています。</li>
-      </ul>
     </section>
   </main>
 
-  <footer class="site-footer">
-    <p>データ出典: <a href="https://support.nii.ac.jp/ja/cib/api/b_opensearch" target="_blank" rel="noopener">CiNii Books OpenSearch API</a>／分類名: <a href="https://www.jla.or.jp/committees/bunrui/ndc-data/" target="_blank" rel="noopener">NDC-LD（日本図書館協会・CC BY）</a>／表紙画像: <a href="https://openbd.jp/" target="_blank" rel="noopener">openBD</a></p>
-  </footer>
-
-  <script src="js/start.js?v=20260714b" defer></script>
+  <script src="js/start.js?v=20260715a" defer></script>
 </body>
 </html>
