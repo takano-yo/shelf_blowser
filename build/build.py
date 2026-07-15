@@ -87,7 +87,9 @@ def build(source, out_dir, covers=False, cache=".cache/openbd/",
 # NDC 棚データの生成（--ndc）
 # ---------------------------------------------------------------------------
 
-def build_ndc(cache_dir, out_dir, max_records=1000):
+def build_ndc(cache_dir, out_dir, max_records=1000, covers=False,
+              cover_cache=".cache/openbd/", cover_batch=1000,
+              cover_interval=1.0):
     """`.cache/ndc/` の生レスポンスから NDC 棚データ＋マスタ index.json を生成する。
 
     - 棚データ `<分類記号>.json` は books.json と同一スキーマ・同一整列
@@ -118,7 +120,7 @@ def build_ndc(cache_dir, out_dir, max_records=1000):
         label_source = ldata.get("source")
 
     classes = []
-    built = skipped = 0
+    built = skipped = total_covers = 0
     for code in all_codes():
         cache_path = cache_dir / f"{code}.json"
         entry = {"code": code, "label": labels.get(code),
@@ -131,6 +133,12 @@ def build_ndc(cache_dir, out_dir, max_records=1000):
             records = records[:max_records]
             entry["count"] = total_results(data)
             entry["fetchedAt"] = fetched_at(data)
+            # 表紙付与（OpenBD）。ISBN 単位キャッシュを books.json と共有するため、
+            # 分類をまたいで重複する ISBN は一度しか問い合わせない。
+            if covers and records:
+                total_covers += enrich_covers(
+                    records, cover_cache, batch=cover_batch,
+                    interval=cover_interval)
             if records:
                 (out_dir / f"{code}.json").write_text(
                     json.dumps(records, ensure_ascii=False,
@@ -151,10 +159,16 @@ def build_ndc(cache_dir, out_dir, max_records=1000):
         .replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "sort": "ownerCount desc, ncid asc",
         "maxRecords": max_records,
+        "withCover": total_covers,
         "dataSource": {
             "name": "CiNii Books",
             "url": "https://ci.nii.ac.jp/books/",
             "license": "CC BY 4.0",
+        },
+        # 表紙画像の出典（books.json と同じく OpenBD）。
+        "coverSource": {
+            "name": "openBD",
+            "url": "https://openbd.jp/",
         },
         # 分類名の出典。labels.json（JLA 公式 NDC9 版・CC-BY）から転記する。
         # 無い場合は null（分類名未収録 → docs/site-structure.md #2）。
@@ -165,6 +179,50 @@ def build_ndc(cache_dir, out_dir, max_records=1000):
         json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return built, skipped, index
+
+
+def enrich_ndc_covers_inplace(ndc_out, cache=".cache/openbd/",
+                              batch=1000, interval=1.0):
+    """既存の `site/data/ndc/<記号>.json` に OpenBD 表紙を追記する（その場更新）。
+
+    NDC の生レスポンス（`.cache/ndc/`）はリポジトリ管理外のため再取得なしに
+    棚データを作り直せない。一方 `site/data/ndc/*.json` はコミット済みの成果物
+    なので、そこへ表紙だけを後付けできるようにする。棚を 1 ファイルずつ読み込み、
+    `enrich_covers` で表紙を引いて（`.cache/openbd/` に ISBN 単位で永続化。分類を
+    またぐ重複 ISBN・books.json との重複は最初の 1 回だけ問い合わせ、以降は
+    キャッシュから解決）書き戻す。冪等（棚の並び・スキーマは変えず coverUrl のみ更新）。
+    """
+    ndc_out = Path(ndc_out)
+    code_files = sorted(p for p in ndc_out.glob("*.json") if p.name != "index.json")
+
+    # 棚を 1 ファイルずつ処理する（全棚を同時に展開しない＝メモリ安全）。
+    # 表紙は ISBN 単位で `cache` に永続化されるため、分類をまたいで重複する
+    # ISBN は最初の 1 回だけ問い合わせ、以降はキャッシュから解決する
+    # （＝横断的な重複排除は共有キャッシュが担う）。
+    filled = 0
+    for idx, p in enumerate(code_files, 1):
+        records = json.loads(p.read_text(encoding="utf-8"))
+        filled += enrich_covers(records, cache, batch=batch,
+                                interval=interval)
+        p.write_text(
+            json.dumps(records, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        if idx % 50 == 0 or idx == len(code_files):
+            print(f"  NDC 表紙付与: {idx}/{len(code_files)} ファイル"
+                  f"（累計 {filled} 件）", file=sys.stderr)
+
+    # index.json の withCover を実測値へ更新（あれば）。
+    index_path = ndc_out / "index.json"
+    if index_path.is_file():
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        index["withCover"] = filled
+        index.setdefault("coverSource", {"name": "openBD",
+                                         "url": "https://openbd.jp/"})
+        index_path.write_text(
+            json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    return len(code_files), filled
 
 
 def main(argv=None):
@@ -188,15 +246,34 @@ def main(argv=None):
     p.add_argument("--ndc-max", type=int, default=1000,
                    help="NDC 棚 1 分類あたりの件数上限（既定 1000。"
                         "全分類の件数実測にもとづき確定 → docs/site-structure.md #3）")
+    p.add_argument("--ndc-covers", action="store_true",
+                   help="NDC 棚データ生成時に OpenBD 表紙も付与（--ndc と併用）")
+    p.add_argument("--ndc-covers-inplace", action="store_true",
+                   help="既存 site/data/ndc/*.json に OpenBD 表紙を後付けする"
+                        "（NDC 生キャッシュ不要。--ndc-out を対象に更新）")
+    p.add_argument("--cover-batch", type=int, default=1000,
+                   help="OpenBD 1 リクエストの ISBN 数（NDC 一括取得の既定 1000）")
+    p.add_argument("--cover-interval", type=float, default=1.0,
+                   help="OpenBD リクエスト間隔・秒（既定 1.0。API 提供元へのマナー）")
     args = p.parse_args(argv)
 
+    if args.ndc_covers_inplace:
+        files, filled = enrich_ndc_covers_inplace(
+            args.ndc_out, cache=args.cache, batch=args.cover_batch,
+            interval=args.cover_interval)
+        print(f"NDC 棚 表紙付与（その場更新）: {files} ファイル"
+              f" / 表紙 {filled} 件 -> {Path(args.ndc_out)}")
+        return 0
+
     if args.ndc is not None:
-        built, skipped, index = build_ndc(args.ndc, args.ndc_out,
-                                          max_records=args.ndc_max)
+        built, skipped, index = build_ndc(
+            args.ndc, args.ndc_out, max_records=args.ndc_max,
+            covers=args.ndc_covers, cover_cache=args.cache,
+            cover_batch=args.cover_batch, cover_interval=args.cover_interval)
         print(f"NDC 棚データ生成: {built} 分類 / データなし {skipped} 分類"
               f" -> {Path(args.ndc_out)}")
         print(f"  index.json: 全 {len(index['classes'])} 分類"
-              f"（件数上限 {args.ndc_max} 件）")
+              f"（件数上限 {args.ndc_max} 件・表紙 {index.get('withCover', 0)} 件）")
         return 0
 
     records, meta = build(

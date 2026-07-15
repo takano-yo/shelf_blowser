@@ -8896,5 +8896,10 @@
       "hasData": true,
       "fetchedAt": "2026-07-14T15:15:43+09:00"
     }
-  ]
+  ],
+  "withCover": 32572,
+  "coverSource": {
+    "name": "openBD",
+    "url": "https://openbd.jp/"
+  }
 }
