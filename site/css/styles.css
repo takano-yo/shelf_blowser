@@ -1041,3 +1041,179 @@ body.about-overlay-open .site-header {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* =========================================================================
+ * スタートページ（入口）専用テーマ
+ * body.start-page 配下だけに適用し、共有の本棚ページ（shelf.html）へは波及させない。
+ * 背景ダークグレー／文字・ボタンは白系、アクセントは暗い赤。
+ * PC 表示でスクロールなしの 1 画面に収める。
+ * ========================================================================= */
+body.start-page {
+  --sp-bg: #212429;
+  --sp-surface: #2a2e34;
+  --sp-surface-2: #31363d;
+  --sp-text: #eceef1;
+  --sp-muted: #a2a9b2;
+  --sp-line: #3a4048;
+  --sp-accent: #b02a37;      /* 暗い赤 */
+  --sp-accent-deep: #8f2029;
+
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;          /* 1 画面に収める（スクロールを出さない） */
+  background: var(--sp-bg);
+  color: var(--sp-text);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 1.5rem 1.25rem;
+}
+
+.start-page a { color: var(--sp-text); }
+.start-page a:hover,
+.start-page a:focus-visible { color: #e6969e; }
+
+.start-page .start {
+  max-width: 62rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+}
+
+/* キャッチコピー: 中央寄せ・モダンなゴシック（太字＋広めの字間） */
+.start__copy {
+  margin: 0;
+  text-align: center;
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+}
+
+.start-page .start__section {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* 検索窓（本棚ページの .search を再利用しつつダーク配色に上書き） */
+.start-page .start__search {
+  margin: 0 auto;
+  max-width: 40rem;
+  width: 100%;
+  order: 0;
+}
+.start-page .search__input {
+  padding: 0.7rem 1rem;
+  font-size: 1rem;
+  border: 1px solid var(--sp-line);
+  border-right: none;
+  background: var(--sp-surface);
+  color: var(--sp-text);
+}
+.start-page .search__input::placeholder { color: var(--sp-muted); }
+.start-page .search__input:focus {
+  border-color: var(--sp-accent);
+  background: var(--sp-surface-2);
+}
+.start-page .search__button {
+  padding: 0 1.3rem;
+  font-size: 1rem;
+  color: #fff;
+  background: var(--sp-accent);
+  border: 1px solid var(--sp-accent-deep);
+}
+.start-page .search__button:hover { background: var(--sp-accent-deep); }
+
+.start-page .start__note {
+  margin: 0.7rem 0 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--sp-muted);
+}
+.start-page .start__note a { text-decoration: underline; }
+
+/* --- NDC 分類ナビ（ダーク） --- */
+.start-page .ndc-nav__crumb {
+  margin: 0 0 0.7rem;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--sp-muted);
+}
+
+.start-page .ndc-nav__controls {
+  justify-content: center;
+  margin: 0 0 0.8rem;
+}
+.start-page .ndc-nav__back {
+  color: var(--sp-text);
+  background: var(--sp-surface-2);
+  border: 1px solid var(--sp-line);
+}
+.start-page .ndc-nav__back:hover { border-color: var(--sp-accent); }
+.start-page .ndc-nav__view {
+  color: #fff;
+  background: var(--sp-accent);
+  border: 1px solid var(--sp-accent-deep);
+}
+.start-page .ndc-nav__view:hover { background: var(--sp-accent-deep); }
+
+/* スライド用ビューポート。通常は素の流れ、アニメ中だけ 2 枚を重ねてクリップする。 */
+.ndc-nav__viewport { position: relative; }
+.ndc-nav__viewport.is-animating { overflow: hidden; }
+
+/* 分類ボタンは 横5×縦2（10 個）で固定配置。 */
+.start-page .ndc-nav__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
+  transition: transform 0.38s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.38s ease;
+}
+/* アニメ中は 2 枚のグリッドをビューポートいっぱいに重ねる。 */
+.is-animating .ndc-nav__grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+}
+
+.start-page .ndc-btn {
+  gap: 0.2rem;
+  padding: 0.55rem 0.7rem;
+  color: var(--sp-text);
+  background: var(--sp-surface);
+  border: 1px solid var(--sp-line);
+}
+.start-page .ndc-btn:hover:not(:disabled),
+.start-page .ndc-btn:focus-visible {
+  border-color: var(--sp-accent);
+  background: var(--sp-surface-2);
+  box-shadow: none;
+}
+.start-page .ndc-btn:disabled { opacity: 0.4; }
+.start-page .ndc-btn__code { color: #fff; }
+.start-page .ndc-btn__label { color: var(--sp-text); }
+.start-page .ndc-btn__nolabel { color: var(--sp-muted); }
+.start-page .ndc-btn__count { color: var(--sp-muted); }
+
+.start-page .ndc-nav__loading,
+.start-page .ndc-nav__error { color: var(--sp-muted); }
+.start-page .ndc-nav__error a { text-decoration: underline; }
+
+/* 出典（分類エリア内に集約） */
+.ndc-nav__source {
+  margin: 1rem 0 0;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--sp-muted);
+}
+.ndc-nav__source a { text-decoration: underline; }
