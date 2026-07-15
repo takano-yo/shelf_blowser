@@ -9,6 +9,7 @@ API サーバ（server）の双方から使えるよう共通化したもの。I
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import urllib.parse
@@ -16,6 +17,13 @@ import urllib.request
 from pathlib import Path
 
 OPENBD_API = "https://api.openbd.jp/v1/get"
+
+
+def _write_json_atomic(path, obj):
+    """一時ファイルへ書いてから rename する（中断時に部分ファイルを残さない）。"""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _http_get_json(url, retries):
@@ -36,10 +44,15 @@ def _http_get_json(url, retries):
     return None
 
 
-def enrich_covers(records, cache_dir, batch=100, retries=4):
+def enrich_covers(records, cache_dir, batch=100, retries=4, interval=0.2,
+                  progress=False):
     """先頭 ISBN を代表に OpenBD で表紙 URL を引き、coverUrl を埋める。
 
     取得結果は cache_dir に ISBN 単位でキャッシュし、再実行時は再取得しない。
+    `batch` は 1 リクエストで問い合わせる ISBN 数（OpenBD は GET でも 1,000 件
+    程度まで受け付ける）、`interval` はリクエスト間隔（秒。API 提供元への
+    マナー）。大量取得（NDC 棚など）では batch を大きく・interval を長めに取り、
+    リクエスト本数と負荷を抑える。`progress=True` で進捗を stderr に出す。
     """
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -53,16 +66,21 @@ def enrich_covers(records, cache_dir, batch=100, retries=4):
         if r["isbn"]:
             targets.setdefault(r["isbn"][0], []).append(r)
 
-    # キャッシュ済みを先に反映し、未取得分だけ問い合わせる
+    # キャッシュ済みを先に反映し、未取得分だけ問い合わせる。
+    # 破損・空のキャッシュ（中断で生じうる）は未取得扱いにして取り直す。
     pending = []
     cache_mem = {}
     for isbn in targets:
         p = cache_path(isbn)
         if p.exists():
-            cache_mem[isbn] = json.loads(p.read_text(encoding="utf-8"))
+            try:
+                cache_mem[isbn] = json.loads(p.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                pending.append(isbn)
         else:
             pending.append(isbn)
 
+    total_batches = (len(pending) + batch - 1) // batch
     for i in range(0, len(pending), batch):
         chunk = pending[i:i + batch]
         url = OPENBD_API + "?" + urllib.parse.urlencode({"isbn": ",".join(chunk)})
@@ -75,10 +93,11 @@ def enrich_covers(records, cache_dir, batch=100, retries=4):
                 cover = (entry.get("summary") or {}).get("cover") or None
             rec = {"coverUrl": cover}
             cache_mem[isbn] = rec
-            cache_path(isbn).write_text(
-                json.dumps(rec, ensure_ascii=False), encoding="utf-8"
-            )
-        time.sleep(0.2)  # マナー: 間隔を空ける
+            _write_json_atomic(cache_path(isbn), rec)
+        if progress:
+            print(f"  OpenBD: {i // batch + 1}/{total_batches} バッチ完了"
+                  f"（未取得 {len(pending)} ISBN・batch={batch}）", file=sys.stderr)
+        time.sleep(interval)  # マナー: 間隔を空ける
 
     filled = 0
     for isbn, recs in targets.items():

@@ -240,6 +240,29 @@
 > 側で描画する。`books.json` がそれらの項目（`title`/`creators`/`publishers`/
 > `series`）を持っていれば足りるため、build 側は値の保持のみ担保する。
 
+### NDC 棚データへの表紙付与（`--ndc-covers` / `--ndc-covers-inplace`）
+
+`books.json` と同じ仕組みを **NDC 棚データ（`site/data/ndc/<記号>.json`）**にも適用する。
+表紙取得ロジックは `core/openbd.py` の `enrich_covers()` を共有し、`.cache/openbd/`
+キャッシュも共通なので、**books.json と NDC 棚で重複する ISBN は一度しか問い合わせない**。
+
+- **2 経路**:
+  - `--ndc`（棚生成）に `--ndc-covers` を併用すると、生成と同時に表紙を付与する。
+    NDC の生レスポンス（`.cache/ndc/`）が必要。
+  - `--ndc-covers-inplace` は、**コミット済みの `site/data/ndc/*.json` を直接更新**して
+    `coverUrl` だけを後付けする。NDC 生キャッシュはリポジトリ管理外（`.gitignore`）で
+    再取得なしに棚を作り直せないため、成果物へ表紙のみを重ねるこの経路を用意した。
+    棚の並び・スキーマは変えず `coverUrl` だけを更新する（**冪等**）。
+- **API 提供元への負荷対策（マナー）**: 全 1,110 分類・約 93 万レコードが対象で
+  代表 ISBN はユニオンで約 55 万件に達するため、次の方針で **OpenBD への負荷を抑える**。
+  - **バッチを大きく**（`--cover-batch`、既定 1,000。OpenBD は GET でも 1,000 件程度の
+    複数 ISBN 指定を受け付ける）＝リクエスト**本数**を約 550 本まで圧縮する。
+  - **リクエスト間隔**を `--cover-interval`（既定 **1.0 秒**）で必ず空ける（`ndc_fetch.py`
+    の CiNii 取得と同じマナー水準）。
+  - ISBN 単位キャッシュにより**再実行・再開時は再取得しない**ので、更新のたびに
+    全件を叩き直すことはない（差分のみ取得）。
+  - ネットワーク／一時エラーは指数バックオフで再試行。
+
 ---
 
 ## 整列（段階 4）
@@ -336,6 +359,16 @@ python build/build.py --source source/日本近代文学.json --out site/data/
 python build/build.py --source source/日本近代文学.json --out site/data/ \
                       --covers --cache .cache/openbd/
 
+# NDC 棚データを生成しつつ表紙も付与（.cache/ndc/ の生レスポンスが必要）
+python build/build.py --ndc .cache/ndc/ --ndc-out site/data/ndc/ \
+                      --ndc-covers --cache .cache/openbd/
+
+# 既存の NDC 棚 JSON に表紙だけを後付けする（NDC 生キャッシュ不要）
+# ※ .cache/ndc/ はリポジトリ管理外のため、コミット済みの site/data/ndc/*.json
+#   を直接更新する経路。表紙は OpenBD へ batch=1000・間隔 1 秒で問い合わせる。
+python build/build.py --ndc-covers-inplace --ndc-out site/data/ndc/ \
+                      --cache .cache/openbd/ --cover-batch 1000 --cover-interval 1.0
+
 # 件名・著者名を含めた詳細検索用も生成（後回し / fetch の詳細レコードを合流）
 python build/build.py --source source/日本近代文学.json \
                       --details .cache/details/ --out site/data/
@@ -354,6 +387,10 @@ python build/build.py --source source/日本近代文学.json \
 | `--ndc [DIR]` | NDC 棚データ＋マスタの生成モード（実装済み。→「今後必要な作業 #2」） | 無効（DIR 省略時 `.cache/ndc/`） |
 | `--ndc-out DIR` | NDC 棚データの出力先 | `site/data/ndc/` |
 | `--ndc-max N` | NDC 棚 1 分類あたりの件数上限（所蔵館数上位を優先して切り詰め） | `1000`（全分類の件数実測にもとづき確定・2026-07-14） |
+| `--ndc-covers` | NDC 棚生成時に OpenBD 表紙も付与（`--ndc` と併用） | 無効 |
+| `--ndc-covers-inplace` | 既存 `site/data/ndc/*.json` に OpenBD 表紙を後付け（NDC 生キャッシュ不要） | 無効 |
+| `--cover-batch N` | OpenBD 1 リクエストの ISBN 数（NDC 一括取得の既定） | `1000` |
+| `--cover-interval SEC` | OpenBD リクエスト間隔・秒（API 提供元へのマナー） | `1.0` |
 | `--details DIR` | 詳細検索索引の生成（後回し） | 無効 |
 
 ---
