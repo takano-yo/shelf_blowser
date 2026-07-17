@@ -883,35 +883,50 @@ body.about-overlay-open .site-header {
 .start__source-list li { margin-bottom: 0.3rem; }
 
 /* --- NDC 分類ナビ --- */
-.ndc-nav__crumb {
+.ndc-nav__heading {
   margin: 0 0 0.75rem;
-  font-size: 0.85rem;
-  color: var(--muted);
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
+/* パンくず（選択中の分類）と「棚を見る」ボタンの行。領域は常設し、
+ * 選択の有無でボタンが上下に動かないよう最小高さを確保する。 */
 .ndc-nav__controls {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem 0.75rem;
   flex-wrap: wrap;
   margin: 0 0 0.9rem;
+  min-height: 2.1rem;
 }
-/* display: flex が hidden 属性（UA の display: none）を上書きしないように明示する。 */
-.ndc-nav__controls[hidden] { display: none; }
 
-.ndc-nav__back {
-  padding: 0.45rem 0.9rem;
+.ndc-nav__crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.3rem;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 0.85rem;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  cursor: pointer;
 }
-.ndc-nav__back:hover { border-color: var(--sky-deep); }
+.ndc-crumb {
+  padding: 0.15rem 0.1rem;
+  font: inherit;
+  color: var(--sky-deep);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.ndc-crumb:hover,
+.ndc-crumb:focus-visible { text-decoration: underline; }
+.ndc-crumb--current { color: var(--muted); cursor: default; text-decoration: none; }
+.ndc-crumb__sep { color: var(--muted); }
 
-/* 「この分類の棚を見る」はアクセント色のボタン風リンク（主要動線）。 */
+/* 「この分類の棚を見る」はボタン風リンク（主要動線）。 */
 .ndc-nav__view {
+  flex: 0 0 auto;
   padding: 0.45rem 0.9rem;
   font-size: 0.85rem;
   font-weight: 700;
@@ -922,6 +937,8 @@ body.about-overlay-open .site-header {
   text-decoration: none;
 }
 .ndc-nav__view:hover { background: var(--accent-deep); }
+/* 類目選択前は棚を見る対象がないため不可視。領域は保持して位置ずれを防ぐ。 */
+.ndc-nav__view.is-inactive { visibility: hidden; }
 
 .ndc-nav__grid {
   display: grid;
@@ -1049,14 +1066,16 @@ body.about-overlay-open .site-header {
  * PC 表示でスクロールなしの 1 画面に収める。
  * ========================================================================= */
 body.start-page {
-  --sp-bg: #212429;
+  --sp-bg: #474c54;          /* 中間グレー（従来のダークグレーより明るく） */
   --sp-surface: #2a2e34;
   --sp-surface-2: #31363d;
+  --sp-btn: #26292e;         /* ボタン塗りつぶし（黒系ダークグレー） */
+  --sp-btn-hover: #31353b;
   --sp-text: #eceef1;
-  --sp-muted: #a2a9b2;
-  --sp-line: #3a4048;
-  --sp-accent: #b02a37;      /* 暗い赤 */
-  --sp-accent-deep: #8f2029;
+  --sp-muted: #c2c7ce;
+  --sp-line: #565c65;
+  --sp-accent: #d24651;      /* 赤（枠線用・明るめ背景でも視認できる濃さ） */
+  --sp-accent-deep: #b02a37;
 
   min-height: 100vh;
   height: 100vh;
@@ -1084,14 +1103,14 @@ body.start-page {
   gap: 1.6rem;
 }
 
-/* キャッチコピー: 中央寄せ・モダンなゴシック（太字＋広めの字間） */
+/* キャッチコピー: 中央寄せ・やわらかい丸ゴシックを細字で（手書き味のある印象）。 */
 .start__copy {
   margin: 0;
   text-align: center;
-  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+  font-family: "Hiragino Maru Gothic ProN", "Hiragino Maru Gothic Pro", "YuGothic", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
   font-size: clamp(1.6rem, 3vw, 2.4rem);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 300;
+  letter-spacing: 0.12em;
   color: #fff;
 }
 
@@ -1124,14 +1143,16 @@ body.start-page {
   border-color: var(--sp-accent);
   background: var(--sp-surface-2);
 }
+/* 検索ボタン: 枠線赤＋塗りつぶし黒系（ダークグレー）。 */
 .start-page .search__button {
   padding: 0 1.3rem;
   font-size: 1rem;
   color: #fff;
-  background: var(--sp-accent);
-  border: 1px solid var(--sp-accent-deep);
+  background: var(--sp-btn);
+  border: 1px solid var(--sp-accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
 }
-.start-page .search__button:hover { background: var(--sp-accent-deep); }
+.start-page .search__button:hover { background: var(--sp-btn-hover); border-color: var(--sp-accent-deep); }
 
 .start-page .start__note {
   margin: 0.7rem 0 0;
@@ -1142,29 +1163,35 @@ body.start-page {
 .start-page .start__note a { text-decoration: underline; }
 
 /* --- NDC 分類ナビ（ダーク） --- */
-.start-page .ndc-nav__crumb {
+.start-page .ndc-nav__heading {
   margin: 0 0 0.7rem;
   text-align: center;
-  font-size: 0.82rem;
-  color: var(--sp-muted);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--sp-text);
 }
 
 .start-page .ndc-nav__controls {
   justify-content: center;
   margin: 0 0 0.8rem;
 }
-.start-page .ndc-nav__back {
-  color: var(--sp-text);
-  background: var(--sp-surface-2);
-  border: 1px solid var(--sp-line);
+.start-page .ndc-nav__crumbs {
+  flex: 0 1 auto;
+  justify-content: center;
+  font-size: 0.85rem;
 }
-.start-page .ndc-nav__back:hover { border-color: var(--sp-accent); }
+.start-page .ndc-crumb { color: #e6969e; }
+.start-page .ndc-crumb:hover,
+.start-page .ndc-crumb:focus-visible { color: #f0b3b9; }
+.start-page .ndc-crumb--current { color: var(--sp-text); }
+.start-page .ndc-crumb__sep { color: var(--sp-muted); }
+/* 棚を見るボタン: 枠線赤＋塗りつぶし黒系（ダークグレー）。 */
 .start-page .ndc-nav__view {
   color: #fff;
-  background: var(--sp-accent);
-  border: 1px solid var(--sp-accent-deep);
+  background: var(--sp-btn);
+  border: 1px solid var(--sp-accent);
 }
-.start-page .ndc-nav__view:hover { background: var(--sp-accent-deep); }
+.start-page .ndc-nav__view:hover { background: var(--sp-btn-hover); border-color: var(--sp-accent-deep); }
 
 /* スライド用ビューポート。通常は素の流れ、アニメ中だけ 2 枚を重ねてクリップする。 */
 .ndc-nav__viewport { position: relative; }

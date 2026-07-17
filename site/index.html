@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>shelf_blowser — 本棚ブラウジングの入口</title>
   <meta name="description" content="キーワードまたは NDC 分類（日本十進分類法）から入る、書誌データの本棚ブラウジング">
-  <link rel="stylesheet" href="css/styles.css?v=20260715a">
+  <link rel="stylesheet" href="css/styles.css?v=20260717a">
 </head>
 <body class="start-page">
   <main class="start">
@@ -21,7 +21,7 @@
           id="start-search-input"
           type="search"
           name="q"
-          placeholder="キーワードで検索（例: 漱石 小説）"
+          placeholder="キーワードから探す（例: 漱石 小説）"
           aria-label="検索キーワード"
           autocomplete="off">
         <button class="search__button" type="submit" aria-label="検索">検索</button>
@@ -36,9 +36,12 @@
          階層移動時はボタン群が横にスライドして切り替わる。 -->
     <section class="start__section start__section--ndc" aria-label="NDC 分類ナビゲーション">
       <nav class="ndc-nav" id="ndc-nav">
-        <p class="ndc-nav__crumb" id="ndc-crumb"></p>
-        <div class="ndc-nav__controls" id="ndc-controls" hidden>
-          <button class="ndc-nav__back" type="button" id="ndc-back">← 上の階層へ戻る</button>
+        <h2 class="ndc-nav__heading">分類から探す</h2>
+        <!-- パンくず（選択中の分類）と「棚を見る」ボタンを常設し、1桁目選択前から
+             領域を確保して選択時のボタン上下移動をなくす。パンくずのクリックで
+             その階層（選択前）へ戻る。 -->
+        <div class="ndc-nav__controls" id="ndc-controls">
+          <nav class="ndc-nav__crumbs" id="ndc-crumbs" aria-label="選択中の分類"></nav>
           <a class="ndc-nav__view" id="ndc-view" href="shelf.html"></a>
         </div>
         <div class="ndc-nav__viewport" id="ndc-viewport">
@@ -52,6 +55,6 @@
     </section>
   </main>
 
-  <script src="js/start.js?v=20260715a" defer></script>
+  <script src="js/start.js?v=20260717a" defer></script>
 </body>
 </html>
