@@ -6,7 +6,7 @@
  * 各階層 10 ボタンを 横5×縦2 で配置）を NDC マスタ data/ndc/index.json から描画する。
  *  - 1・2 桁のボタン = その分類を選んで 1 つ下の階層を表示する（掘り下げ）。
  *  - 3 桁のボタン    = 選択＝遷移（shelf.html?ndc=<3桁> へのリンク）。
- *  - 「上の階層へ戻る」= 1 つ上の階層へ戻る。
+ *  - パンくず（選択中の分類）のクリック = その階層（選択前）へ戻る。
  *  - 「この分類の棚を見る」= 1・2 桁の段階で、それ以上絞り込まずに
  *    shelf.html?ndc=<記号> へ遷移する。
  * 階層移動はボタン群（5×2）を横スライドで切り替える。掘り下げ＝現ボタンが左へ流れ
@@ -18,9 +18,8 @@ const NDC_INDEX_URL = 'data/ndc/index.json';
 const SHELF_URL = 'shelf.html';
 
 const els = {
-  crumb: document.getElementById('ndc-crumb'),
+  crumbs: document.getElementById('ndc-crumbs'),
   controls: document.getElementById('ndc-controls'),
-  back: document.getElementById('ndc-back'),
   view: document.getElementById('ndc-view'),
   viewport: document.getElementById('ndc-viewport'),
 };
@@ -98,18 +97,36 @@ function makeGrid(forPath) {
   return g;
 }
 
-/* パンくず・操作ボタン（戻る／この分類の棚を見る）を現在の path に合わせて更新する。 */
-function updateChrome() {
+/* 選択中の分類パンくずを描画する。先頭「すべて」＝類目選択前（path=''）。
+ * 末尾（現在地）以外はボタンで、クリックするとその階層＝選択前へ戻る。 */
+function renderCrumbs() {
   const depth = path.length; // 0 = 類目 / 1 = 綱目 / 2 = 細目 を選択中
-  if (depth === 0) {
-    els.crumb.textContent = '類目（1 桁・10 区分）から選んでください。分類を選ぶと下の階層へ進みます。';
-    els.controls.hidden = true;
+  const items = [];
+  const root = depth === 0
+    ? '<span class="ndc-crumb ndc-crumb--current" aria-current="true">すべて</span>'
+    : '<button type="button" class="ndc-crumb" data-path="">すべて</button>';
+  items.push(root);
+  for (let i = 1; i <= depth; i++) {
+    const p = path.slice(0, i);
+    const label = escapeHtml(codeWithLabel(p));
+    items.push(i === depth
+      ? `<span class="ndc-crumb ndc-crumb--current" aria-current="true">${label}</span>`
+      : `<button type="button" class="ndc-crumb" data-path="${escapeHtml(p)}">${label}</button>`);
+  }
+  els.crumbs.innerHTML = items.join('<span class="ndc-crumb__sep" aria-hidden="true">›</span>');
+}
+
+/* パンくず・「この分類の棚を見る」ボタンを現在の path に合わせて更新する。
+ * 領域は常設し（選択前でも確保）、選択時にボタンが上下へ動かないようにする。
+ * 類目選択前（path=''）は棚を見る対象がないのでボタンを不可視（領域は維持）にする。 */
+function updateChrome() {
+  renderCrumbs();
+  if (!path) {
+    els.view.classList.add('is-inactive');
+    els.view.removeAttribute('href');
+    els.view.textContent = '';
   } else {
-    const parts = [];
-    for (let i = 1; i <= depth; i++) parts.push(codeWithLabel(path.slice(0, i)));
-    const next = depth === 1 ? '綱目（2 桁）' : '細目（3 桁）';
-    els.crumb.textContent = `選択中: ${parts.join(' › ')} — ${next}を選ぶか、この分類のまま棚を見られます。`;
-    els.controls.hidden = false;
+    els.view.classList.remove('is-inactive');
     els.view.href = shelfUrl(path);
     els.view.textContent = `この分類（${codeWithLabel(path)}）の棚を見る →`;
   }
@@ -173,9 +190,13 @@ function bindEvents() {
     navigate(code, 'forward');
   });
 
-  els.back.addEventListener('click', () => {
-    if (!path) return;
-    navigate(path.slice(0, -1), 'back');
+  // パンくずのクリック = その階層（選択前）へ戻る。末尾（現在地）は span なので対象外。
+  els.crumbs.addEventListener('click', (e) => {
+    const btn = e.target.closest('button.ndc-crumb[data-path]');
+    if (!btn) return;
+    const target = btn.dataset.path;
+    if (target === path) return;
+    navigate(target, target.length < path.length ? 'back' : 'forward');
   });
 }
 
