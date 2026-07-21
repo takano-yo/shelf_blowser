@@ -7,6 +7,10 @@
 > （[site](../site/README.md) / [fetch](../fetch/README.md) / [build](../build/README.md) /
 > [server](../server/README.md) / [core](../core/README.md)）に配置する。
 > 優先度は [ルート README のロードマップ](../README.md#今後必要な作業ロードマップ) の **P2** に対応する。
+>
+> **検索まわりの追補（2026-07-15）**: 本書の「NDC 棚内の検索」等のフォールバック挙動は
+> [docs/site-search.md](site-search.md)（サイト内検索の拡張・P2.5）で刷新する。
+> 検索機能については同書を最新の方針とする。
 
 ---
 

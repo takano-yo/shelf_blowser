@@ -522,6 +522,14 @@ python build/build.py --source source/日本近代文学.json \
 定義する（→ [core/README.md](../core/README.md)）。build 側は「受け入れ条件 1〜8 を
 CI で自動実行する」形で参加する（books.json のスキーマ検証・冪等性チェック）。
 
+### 6. 検索コーパス生成 `--search-index`（P2.5）
+
+サーバー未稼働時の **NDC 類（1 桁）内検索**用に、`site/data/search/`
+（類ごとの正規化済み検索コーパス＋manifest）を生成する。**GitHub Pages の
+デプロイ時に生成し、リポジトリへはコミットしない**（`.gitignore` 対象。
+ローカル開発では手動実行）。正規化規則・コーパス形式・手順は
+[docs/site-search.md](../docs/site-search.md) を正とする。
+
 ---
 
 ## 将来要件（後回し）— 詳細検索用の索引
