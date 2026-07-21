@@ -292,6 +292,19 @@ CiNii Books OpenSearch は使えなくなる前提で移行する。書影は op
 | 7 | 本棚ページの初期条件対応（`?q=`/`?ndc=`）と URL 状態同期 | [site/README.md](site/README.md) |
 | 8 | NDC 分類内の動的検索（`/api/search` の `ndc` パラメータ・静的フォールバック） | [server/README.md](server/README.md) |
 
+### P2.5 — サイト内検索の拡張（類内検索＋検索モード切替）
+
+**要件定義は [docs/site-search.md](docs/site-search.md)**（2026-07-15 決定）。
+サーバー未稼働（GitHub Pages のみ）でも NDC 類（1 桁）単位の収録データ全体を
+検索できるようにし、スタートページ・本棚ページの双方へ
+「収録データ検索（既定）／CiNii API 検索（サーバー稼働時限定・未稼働時はグレーアウト）」の
+モード切替を置く。検索コーパスは Pages デプロイ時に生成（コミットしない）。
+
+| # | 作業 | 要件定義の場所 |
+|---|---|---|
+| 20 | 検索コーパス生成（`build.py --search-index`・正規化の共有テストベクタ・Pages デプロイ時生成） | [docs/site-search.md](docs/site-search.md)・[build/README.md](build/README.md) |
+| 21 | 検索モード切替 UI・類内検索・`/api/ping`（site / server） | [docs/site-search.md](docs/site-search.md)・[site/README.md](site/README.md)・[server/README.md](server/README.md) |
+
 ### P3 — 品質基盤
 
 | # | 作業 | 要件定義の場所 |
@@ -305,7 +318,7 @@ CiNii Books OpenSearch は使えなくなる前提で移行する。書影は op
 
 | # | 作業 | 要件定義の場所 |
 |---|---|---|
-| 13 | 検索リクエストの競合対策（AbortController） | [site/README.md](site/README.md) |
+| 13 | 検索リクエストの競合対策（AbortController）→ **P2.5 #21 の実装へ統合** | [site/README.md](site/README.md)・[docs/site-search.md](docs/site-search.md) |
 | 14 | ピボットブラウジング（著者・出版社・シリーズのクリックで棚を再生成） | [site/README.md](site/README.md) |
 | 15 | 詳細オーバーレイに「棚の近傍」表示（virtual browse） | [site/README.md](site/README.md) |
 | 16 | アクセシビリティ強化（タブの矢印キー移動・フォーカストラップ） | [site/README.md](site/README.md) |
