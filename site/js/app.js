@@ -45,6 +45,8 @@ const els = {
   sentinel: document.getElementById('shelf-sentinel'),
   overlay: document.getElementById('overlay'),
   overlayBody: document.getElementById('overlay-body'),
+  ovBack: document.getElementById('ov-back'),
+  ovFwd: document.getElementById('ov-fwd'),
   aboutOverlay: document.getElementById('about-overlay'),
   aboutOpenBtn: document.getElementById('about-open-btn'),
   searchbarInner: document.querySelector('.searchbar__inner'),
@@ -88,6 +90,7 @@ let currentQuery = '';      // 検索語（q）。空 = 検索なし
 let currentNdc = '';        // NDC 分類記号（ndc・1〜3 桁）。空 = NDC 棚ではない
 let currentMode = 'data';   // 検索モード（data=収録データ検索 / api=CiNii API 検索）
 let ndcBooks = null;        // NDC 棚の全件（サーバ未稼働時のクライアント側絞り込みに使う）
+let currentBooks = [];      // 現在棚のデータセット全件（詳細の関連書の母集合に使う）
 let ndcIndexPromise = null; // data/ndc/index.json の読み込み Promise（取得は 1 回だけ）
 let restoringState = false; // popstate 復元中は URL を書き込まない（履歴を汚さない）
 let serverUp = false;       // /api/ping による稼働判定（未稼働なら API 検索を不可にする）
@@ -769,9 +772,207 @@ function overlayHtml(item) {
 
 let lastFocused = null;
 
+/* ---------- 関連書（同じ著者・出版社・NDC）とオーバーレイ内履歴 ----------
+ * docs/detail-related-books.md R1〜R3。
+ * - 著者・出版社: 現在棚のデータセット全体（currentBooks）から完全一致で探す。
+ * - NDC: NCID→3桁NDC の逆引きシャード（data/ndc/rev/）で書誌の分類を求め、
+ *   その 3 桁分類棚ファイル（data/ndc/<code>.json）を母集合にする。
+ * - オーバーレイ内履歴: 関連書クリックの遷移を stack/pos で管理し、
+ *   左上の戻る（<）/進む（>）ボタンで行き来する。URL・ブラウザ履歴とは独立。 */
+
+const RELATED_MAX = 10; // 関連書 1 行あたりの最大件数
+
+function revShardUrl(suffix) { return `data/ndc/rev/${encodeURIComponent(suffix)}.json`; }
+
+const revShardCache = new Map(); // NCID 末尾2文字 -> Promise<逆引きマップ>
+const ndcShelfCache = new Map(); // 3桁分類記号 -> Promise<books[]>
+
+/* NCID から 3 桁 NDC 分類記号の配列（昇順・無ければ []）を引く。
+ * シャードは 1 回だけ取得して使い回し、失敗時は次回呼び出しで再取得できるようにする。 */
+function ndcCodesFor(ncid) {
+  if (!ncid || ncid.length < 2) return Promise.resolve([]);
+  const suffix = ncid.slice(-2);
+  let p = revShardCache.get(suffix);
+  if (!p) {
+    p = fetchJson(revShardUrl(suffix));
+    revShardCache.set(suffix, p);
+    p.catch(() => revShardCache.delete(suffix));
+  }
+  return p.then((map) => map[ncid] || [], () => []);
+}
+
+/* 3 桁分類棚ファイルを読み込む（キャッシュ共用）。現在表示中の NDC 棚と同じ
+ * 分類なら読み込み済みの ndcBooks を再利用する。失敗時は null。 */
+function loadNdcShelf(code) {
+  if (code === currentNdc && ndcBooks) return Promise.resolve(ndcBooks);
+  let p = ndcShelfCache.get(code);
+  if (!p) {
+    p = fetchJson(ndcDataUrl(code));
+    ndcShelfCache.set(code, p);
+    p.catch(() => ndcShelfCache.delete(code));
+  }
+  return p.catch(() => null);
+}
+
+/* 複数の 3 桁分類に載る書誌（約 6%）の主分類を 1 つ選ぶ。
+ * 背景の棚の NDC（currentNdc・1〜3 桁）と前方一致するものを優先し、
+ * なければ昇順の先頭（codes は生成時に昇順格納済み）。 */
+function primaryNdcCode(codes) {
+  if (!codes || !codes.length) return null;
+  if (currentNdc) {
+    const match = codes.find((c) => c.startsWith(currentNdc));
+    if (match) return match;
+  }
+  return codes[0];
+}
+
+/* 表示中書誌と同じシリーズ親（series[0].id）か。同シリーズの巻は詳細内の
+ * 収録巻リストで提示済みのため、関連書行からは除外する（判断事項 #5）。 */
+function sameSeriesParent(a, b) {
+  const pa = a.series && a.series[0] && a.series[0].id;
+  const pb = b.series && b.series[0] && b.series[0].id;
+  return !!pa && pa === pb;
+}
+
+/* 母集合 pool から pred に合う関連書を先頭から最大 RELATED_MAX 件拾う。
+ * pool は ownerCount 降順（データ契約の並び）なので先頭からの走査＝上位優先。
+ * 自身・exclude 指定（シリーズ束の全巻）・同シリーズ親の巻は除外する。 */
+function pickRelated(book, pool, exclude, pred) {
+  const out = [];
+  for (const cand of pool || []) {
+    if (cand.ncid === book.ncid || exclude.has(cand.ncid)) continue;
+    if (sameSeriesParent(book, cand)) continue;
+    if (!pred(cand)) continue;
+    out.push(cand);
+    if (out.length >= RELATED_MAX) break;
+  }
+  return out;
+}
+
+/* 2 つの配列に完全一致する要素が 1 つ以上あるか（著者名・出版社名の一致判定）。 */
+function sharesValue(values, set) {
+  return !!values && values.some((v) => set.has(v));
+}
+
+// 表示中の関連書（クリック時に data-rel="種別:添字" から引く）。
+let ovRelated = { author: [], publisher: [], ndc: [] };
+
+// オーバーレイ内履歴。stack = 表示してきたアイテム列、pos = 現在位置。
+let ovHistory = { stack: [], pos: -1 };
+// 関連書の非同期取得の競合防止（遷移のたびに増やし、古い結果を捨てる）。
+let ovSeq = 0;
+
+/* 関連書 1 冊ぶんの表紙タイル。本棚と同じ coverHtml（書影 or プレースホルダー）を
+ * ボタンで包む。メタ行は付けない（R2）。 */
+function relatedItemHtml(book, kind, idx) {
+  return `
+    <button class="ov-rel__item" type="button" data-rel="${kind}:${idx}"
+            title="${escapeHtml(book.title)}"
+            aria-label="${escapeHtml(book.title)} の詳細を開く">
+      ${coverHtml(book, publisherText(book))}
+    </button>`;
+}
+
+/* 関連書 1 行（見出し＋横スクロール列）。0 件の行は出さない（判断事項 #8）。 */
+function relatedRowHtml(kind, heading, books) {
+  if (!books.length) return '';
+  const tiles = books.map((b, i) => relatedItemHtml(b, kind, i)).join('');
+  return `
+    <section class="ov-rel">
+      <h3 class="ov-rel__heading">${heading}</h3>
+      <div class="ov-rel__row">${tiles}</div>
+    </section>`;
+}
+
+/* 関連書 3 行を非同期に組み立てて #ov-related へ差し込む。seq が古くなっていたら
+ * （別の書誌へ遷移済み・オーバーレイを閉じた）結果を捨てる。 */
+async function fillRelated(item, seq) {
+  const book = item.type === 'series' ? item.rep : item.book;
+  // シリーズ束は全巻を除外（束の代表として表示しているため）。
+  const exclude = new Set();
+  if (item.type === 'series') for (const b of item.books) exclude.add(b.ncid);
+
+  const creatorSet = new Set(book.creators || []);
+  const publisherSet = new Set(book.publishers || []);
+  const author = creatorSet.size
+    ? pickRelated(book, currentBooks, exclude, (c) => sharesValue(c.creators, creatorSet))
+    : [];
+  const publisher = publisherSet.size
+    ? pickRelated(book, currentBooks, exclude, (c) => sharesValue(c.publishers, publisherSet))
+    : [];
+
+  // NDC 行: 逆引き→主分類→その分類棚ファイルの上位から。分類名は index.json から。
+  let ndc = [], ndcHeading = '';
+  const code = primaryNdcCode(await ndcCodesFor(book.ncid));
+  if (code) {
+    const [pool, index] = await Promise.all([
+      loadNdcShelf(code),
+      loadNdcIndex().catch(() => null),
+    ]);
+    if (pool) {
+      ndc = pickRelated(book, pool, exclude, () => true); // 棚ファイル収録 = 分類一致
+      const entry = (index && Array.isArray(index.classes))
+        ? index.classes.find((c) => c.code === code) : null;
+      const label = (entry && entry.label) ? ` ${escapeHtml(entry.label)}` : '';
+      ndcHeading = `同じ分類（NDC ${escapeHtml(code)}${label}）`;
+    }
+  }
+
+  if (seq !== ovSeq) return; // 既に別の書誌へ遷移済み
+  ovRelated = { author, publisher, ndc };
+  const target = document.getElementById('ov-related');
+  if (!target) return;
+  target.innerHTML =
+    relatedRowHtml('author', '同じ著者', author) +
+    relatedRowHtml('publisher', '同じ出版社', publisher) +
+    relatedRowHtml('ndc', ndcHeading, ndc);
+  target.setAttribute('aria-busy', 'false');
+}
+
+/* 戻る/進むボタンの活性状態を履歴位置に合わせる。 */
+function updateOverlayNav() {
+  if (els.ovBack) els.ovBack.disabled = ovHistory.pos <= 0;
+  if (els.ovFwd) els.ovFwd.disabled = ovHistory.pos >= ovHistory.stack.length - 1;
+}
+
+/* 履歴の現在位置のアイテムを描画する（開く・遷移・戻る/進むの共通経路）。 */
+function renderOverlayView() {
+  const item = ovHistory.stack[ovHistory.pos];
+  const seq = ++ovSeq;
+  ovRelated = { author: [], publisher: [], ndc: [] };
+  els.overlayBody.innerHTML = overlayHtml(item)
+    + '<div class="ov__related" id="ov-related" aria-busy="true"></div>';
+  updateOverlayNav();
+  const panel = els.overlay.querySelector('.overlay__panel');
+  panel.scrollTop = 0;
+  fillRelated(item, seq);
+}
+
+/* 関連書クリックで単独書誌として履歴に積んで遷移する（R3）。
+ * 現在位置より先（進む側）の履歴は捨てる＝ブラウザ履歴と同じ規則。 */
+function pushOverlayBook(book) {
+  const item = { type: 'single', book, volumes: (book.isbn && book.isbn.length) || 0 };
+  ovHistory.stack.splice(ovHistory.pos + 1);
+  ovHistory.stack.push(item);
+  ovHistory.pos++;
+  renderOverlayView();
+}
+
+/* 履歴を delta（-1/+1）だけ移動する。端では何もしない。 */
+function moveOverlayHistory(delta) {
+  const pos = ovHistory.pos + delta;
+  if (pos < 0 || pos >= ovHistory.stack.length) return;
+  ovHistory.pos = pos;
+  renderOverlayView();
+  // 端に達してボタンが disabled になったらフォーカスをパネルへ逃がす。
+  if (document.activeElement && document.activeElement.disabled) {
+    els.overlay.querySelector('.overlay__panel').focus();
+  }
+}
+
 function openOverlay(item) {
   hideCoverDetail();
-  els.overlayBody.innerHTML = overlayHtml(item);
+  ovHistory = { stack: [item], pos: 0 }; // 棚から開くたびに履歴を作り直す
   els.overlay.hidden = false;
   document.body.style.overflow = 'hidden';
   lastFocused = document.activeElement;
@@ -779,11 +980,12 @@ function openOverlay(item) {
   // 直前のスワイプで残ったインライン変形/スクロール位置をリセット。
   panel.style.transition = '';
   panel.style.transform = '';
-  panel.scrollTop = 0;
+  renderOverlayView();
   panel.focus();
 }
 
 function closeOverlay() {
+  ovSeq++; // 取得途中の関連書を捨てる（閉じた後に差し込まない）
   els.overlay.hidden = true;
   if (!els.aboutOverlay || els.aboutOverlay.hidden) document.body.style.overflow = '';
   const panel = els.overlay.querySelector('.overlay__panel');
@@ -980,6 +1182,22 @@ function bindEvents() {
   els.overlay.addEventListener('click', (e) => {
     if (e.target.hasAttribute('data-close')) closeOverlay();
   });
+
+  // 関連書クリックで詳細画面のまま遷移（クリック元のボタンは描画で消えるため
+  // フォーカスをパネルへ移してキーボード操作を継続できるようにする）
+  els.overlayBody.addEventListener('click', (e) => {
+    const btn = e.target.closest('.ov-rel__item');
+    if (!btn) return;
+    const [kind, idx] = btn.dataset.rel.split(':');
+    const book = ovRelated[kind] && ovRelated[kind][+idx];
+    if (!book) return;
+    pushOverlayBook(book);
+    els.overlay.querySelector('.overlay__panel').focus();
+  });
+
+  // オーバーレイ内履歴の戻る/進む
+  if (els.ovBack) els.ovBack.addEventListener('click', () => moveOverlayHistory(-1));
+  if (els.ovFwd) els.ovFwd.addEventListener('click', () => moveOverlayHistory(1));
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !els.overlay.hidden) closeOverlay();
     if (e.key === 'Escape' && els.aboutOverlay && !els.aboutOverlay.hidden) closeAboutOverlay();
@@ -1058,6 +1276,7 @@ function bindEvents() {
  * 並べ替えモード（sortMode）は現在の選択を引き継ぐ。query は「すべて」タブの混在
  * 順を決める乱数シードの元（既定表示なら空文字）。 */
 function setBooks(books, query) {
+  currentBooks = books; // 詳細の関連書（同じ著者・出版社）の母集合
   tabItems = buildShelfItems(books, query);
   activeTab = 'all';
   seriesUngrouped = false;
