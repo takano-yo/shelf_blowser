@@ -743,13 +743,19 @@ function overlayHtml(item) {
     ? `<img class="ov__cover" src="${escapeHtml(book.coverUrl)}" alt="${escapeHtml(book.title)} の表紙">`
     : '';
 
+  // 上段は書影（左）＋書誌情報（右）の 2 カラム。縦を圧縮し、下に続く関連書
+  // （docs/detail-related-books.md）と合わせて 1 画面へ収めるための器。
   return `
-    ${coverImg}
-    <h2 class="ov__title" id="ov-title">${escapeHtml(book.title)}</h2>
-    <p class="ov__author">${escapeHtml(authorText(book))}</p>
-    ${seriesBlock}
-    <dl class="ov__dl">${dl}</dl>
-    <a class="ov__link" href="${escapeHtml(book.ciniiUrl)}" target="_blank" rel="noopener">CiNii で見る →</a>`;
+    <div class="ov__head">
+      ${coverImg}
+      <div class="ov__info">
+        <h2 class="ov__title" id="ov-title">${escapeHtml(book.title)}</h2>
+        <p class="ov__author">${escapeHtml(authorText(book))}</p>
+        ${seriesBlock}
+        <dl class="ov__dl">${dl}</dl>
+        <a class="ov__link" href="${escapeHtml(book.ciniiUrl)}" target="_blank" rel="noopener">CiNii で見る →</a>
+      </div>
+    </div>`;
 }
 
 let lastFocused = null;

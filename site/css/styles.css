@@ -721,12 +721,14 @@ body.about-overlay-open .site-header {
   background: rgba(22, 50, 63, 0.35);
   animation: fade 0.15s ease;
 }
+/* PC では画面の約半分まで広げ、書誌詳細＋関連書が 1 画面に収まる余地を作る
+   （docs/detail-related-books.md R5。600px 以下はボトムシート側で全幅上書き）。 */
 .overlay__panel {
   position: absolute;
   top: 0;
   right: 0;
   height: 100%;
-  width: min(28rem, 92vw);
+  width: min(max(28rem, 50vw), 92vw);
   background: #fff;
   border-left: 4px solid var(--sky);
   box-shadow: -8px 0 30px rgba(22, 50, 63, 0.2);
@@ -792,13 +794,24 @@ body.about-overlay-open .site-header {
 .about-body__section ul { margin: 0.3rem 0 0; padding-left: 1.2rem; font-size: 0.88rem; }
 .about-body__section li { margin: 0.2rem 0; }
 
+/* 上段: 書影（左）＋書誌情報（右）の 2 カラム。縦を圧縮して関連書の場所を確保する。
+   書影なしの書誌では情報カラムのみが全幅に伸びる。 */
+.ov__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  margin: 0 0 1rem;
+}
+.ov__info { flex: 1 1 auto; min-width: 0; }
+
 /* 詳細画面の上部に表示する書影（書影ありの場合のみ） */
 .ov__cover {
   display: block;
+  flex: 0 0 auto;
   width: 150px;
-  max-width: 50%;
+  max-width: 40%;
   height: auto;
-  margin: 0 0 1rem;
+  margin: 0;
   border: 1px solid var(--line);
   border-radius: 4px;
   box-shadow: 0 4px 14px rgba(31, 155, 196, 0.18);
@@ -817,7 +830,8 @@ body.about-overlay-open .site-header {
 }
 .ov__dl { margin: 0 0 1rem; display: grid; grid-template-columns: 6rem 1fr; gap: 0.45rem 0.75rem; font-size: 0.88rem; }
 .ov__dl dt { color: var(--muted); }
-.ov__dl dd { margin: 0; word-break: break-word; }
+/* 値が長い項目（多巻ものの ISBN 列挙など）で縦に伸びないよう、項目内スクロールに畳む。 */
+.ov__dl dd { margin: 0; word-break: break-word; max-height: 6em; overflow-y: auto; }
 .ov__link {
   display: inline-block;
   margin-top: 0.5rem;
@@ -829,7 +843,15 @@ body.about-overlay-open .site-header {
   text-decoration: none;
 }
 .ov__link:hover { background: var(--sky); }
-.ov__series-list { margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.84rem; color: var(--text); }
+/* シリーズ収録巻リスト。巻数が多くても詳細全体を押し下げないよう内部スクロールに畳む。 */
+.ov__series-list {
+  margin: 0.4rem 0 1rem;
+  padding-left: 1.1rem;
+  font-size: 0.84rem;
+  color: var(--text);
+  max-height: 9.5em;
+  overflow-y: auto;
+}
 .ov__series-list li { margin: 0.15rem 0; }
 .ov__note { font-size: 0.78rem; color: var(--muted); }
 
@@ -1039,6 +1061,10 @@ body.about-overlay-open .site-header {
     /* 下スワイプで閉じられることを示すドラッグハンドル分の余白 */
     padding-top: 1.6rem;
   }
+  /* モバイルは 2 カラムにせず従来どおり縦積み（幅が足りないため）。 */
+  .ov__head { display: block; }
+  .ov__cover { margin: 0 0 1rem; max-width: 50%; }
+
   /* ドラッグハンドル（つまみ）: 下スワイプで閉じられることを示唆 */
   .overlay__panel:not(.overlay__panel--about)::before {
     content: "";
