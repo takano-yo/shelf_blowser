@@ -10,6 +10,7 @@
 
 | パス | 内容 |
 |---|---|
+| `GET /api/ping` | サーバー稼働判定用（`{"ok": true}` を返すだけ）。site が読込時に叩き、失敗時は CiNii API 検索モードをグレーアウトする（[docs/site-search.md](../docs/site-search.md)） |
 | `GET /api/search?q=<語>&count=<N>` | 動的検索の結果（books 配列）。付随情報は `X-Result-Source`（cinii / local / local-fallback / ndc-local / ndc-local-fallback / cache）・`X-Result-Count` ヘッダで返す |
 | `GET /api/search?q=<語>&ndc=<記号>` | NDC 分類内の検索（1〜3 桁）。`q` と併用で「その分類 かつ その語」、`q` 無しなら分類全体（＝静的 `site/data/ndc/<記号>.json` と同等）。ライブ時は CiNii の分類検索（`clas=<記号>*`・前方一致）との複合クエリ、ローカル時・ライブ失敗時は静的 NDC データの絞り込み。不正な記号は 400、データ未整備の分類は 404 |
 | その他のパス | `site/` 配下の静的ファイル配信（同一オリジンなので CORS 不要） |
@@ -105,9 +106,9 @@ python server/app.py --port 8000 --live
 - **手順**: 移行先の選定（ユーザー判断）→ HTTP 層の分離 → デプロイ →
   `SEARCH_URL` 切り替え → 動作確認。
 
-### 5. サーバー稼働判定 `/api/ping`（P2.5）
+### 5. サーバー稼働判定 `/api/ping`（P2.5・**実装済み**）
 
-- **要件**: `{"ok": true}` を返すだけの軽量エンドポイントを追加する。
+- `{"ok": true}` を返すだけの軽量エンドポイント（CORS 許可ヘッダ付き）。
   site 側がページ読込時に 1 回 fetch してサーバー稼働を判定し、
   未稼働時は「CiNii API 検索」モードをグレーアウトする
   （検索モード切替の全体要件は [docs/site-search.md](../docs/site-search.md) を正とする）。

@@ -528,13 +528,34 @@ python build/build.py --source source/日本近代文学.json \
 定義する（→ [core/README.md](../core/README.md)）。build 側は「受け入れ条件 1〜8 を
 CI で自動実行する」形で参加する（books.json のスキーマ検証・冪等性チェック）。
 
-### 6. 検索コーパス生成 `--search-index`（P2.5）
+### 6. 検索コーパス生成 `--search-index`（P2.5・**実装済み**）
 
-サーバー未稼働時の **NDC 類（1 桁）内検索**用に、`site/data/search/`
-（類ごとの正規化済み検索コーパス＋manifest）を生成する。**GitHub Pages の
-デプロイ時に生成し、リポジトリへはコミットしない**（`.gitignore` 対象。
-ローカル開発では手動実行）。正規化規則・コーパス形式・手順は
-[docs/site-search.md](../docs/site-search.md) を正とする。
+サーバー未稼働時の **NDC 類（1 桁）内検索**用に、`site/data/ndc/` から
+`site/data/search/` を生成する。
+
+```bash
+python build/build.py --search-index
+# → site/data/search/corpus-0.json … corpus-9.json ＋ manifest.json
+```
+
+- **出力**: 類ごとに `corpus-<類>.json`（**列指向** `{"s":[正規化済み検索文字列],
+  "f":[収録分類記号], "i":[行位置]}`・所蔵館数降順・ncid 重複排除・最浅参照）と
+  `manifest.json`（正規化バージョン・取得上限 K＝30・件数など）。書誌本体は
+  二重保存せず `site/data/ndc/<f>.json` の `i` 行目から解決する。
+- 正規化は `core/search_normalize.py`（`build`／`site` 共有規則。共有テストベクタ
+  `core/search_normalize_vectors.json` で Python/JS 一致を検証）。
+- **冪等**: 同じ `site/data/ndc/` からは `corpus-*.json` がバイト一致で再生成される。
+- **標準ライブラリのみ・ネットワーク不使用**。
+- **GitHub Pages のデプロイ時に生成し、リポジトリへはコミットしない**
+  （`.gitignore` 対象。`.github/workflows/pages.yml` が upload 前に実行）。
+  ローカル開発では上記コマンドで手動生成する。
+- 正規化規則・コーパス形式・取得上限 K の確定は [docs/site-search.md](../docs/site-search.md)・
+  [docs/site-search-poc.md](../docs/site-search-poc.md) を正とする。
+
+> **データ更新ランブック補足**: `site/data/ndc/` を再取得・再ビルドしたら、検索
+> コーパスは**デプロイのたびに自動で追随**する（`pages.yml` が毎回再生成するため、
+> コーパスを別途コミット・更新する運用は不要）。ローカルで確認する場合のみ
+> 上記コマンドを手動実行する。
 
 ---
 
