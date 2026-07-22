@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 # 動的検索サーバの結果キャッシュ（キーワード単位・冪等・再生成可能）
 server/cache/
+# 検索コーパス（Pages デプロイ時生成・冪等・再生成可能。docs/site-search.md 手順2/5）
+site/data/search/

@@ -29,6 +29,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core.ciniisearch import fetched_at, items_from_response, total_results  # noqa: E402
 from core.normalize import normalize_item  # noqa: E402
 from core.openbd import enrich_covers  # noqa: E402 — build と server で共有（段階3 表紙取得）
+from core.search_normalize import (  # noqa: E402 — 検索コーパス生成（手順2）
+    NORMALIZE_VERSION, book_haystack, normalize_search,
+)
 from fetch.ndc_fetch import all_codes  # noqa: E402 — NDC 分類記号の一覧（fetch と共通）
 
 
@@ -225,6 +228,86 @@ def enrich_ndc_covers_inplace(ndc_out, cache=".cache/openbd/",
     return len(code_files), filled
 
 
+# ---------------------------------------------------------------------------
+# 検索コーパスの生成（--search-index） … docs/site-search.md 実装手順 2
+# ---------------------------------------------------------------------------
+
+def build_search_index(ndc_dir, out_dir, max_results=1000, fetch_limit=30):
+    """`site/data/ndc/` から類（1 桁 0〜9）ごとの検索コーパスを冪等生成する。
+
+    コーパス 1 行 = 類内ユニーク書誌（ncid で重複排除）。同一書誌が類目/綱目/細目の
+    複数ファイルに現れる階層重複は、**最も浅い（記号が短い）分類ファイル**の出現を
+    採用する（`all_codes()` は 0〜9 → 00〜99 → 000〜999 の浅い順のため、初出＝最浅）。
+
+    出力（列指向 JSON。docs/site-search-poc.md の確定形式）:
+      corpus-<類>.json = {"s": [正規化済み検索文字列…],
+                          "f": [収録分類記号…], "i": [その分類ファイル内の行位置…]}
+      並びは類内の所蔵館数降順・同値 ncid 昇順（＝ランキング順。site/data/ndc と同一規則）。
+    書誌本体は site/data/ndc/<f>.json の i 行目から解決する（二重保存しない）。
+
+    冪等: 同じ ndc データからは corpus-*.json がバイト一致で再生成される
+    （manifest.json の generatedAt のみ実行時刻で変わる）。
+    """
+    ndc_dir = Path(ndc_dir)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    classes_meta = []
+    for d in range(10):
+        digit = str(d)
+        # 類 digit に属する分類記号（0→00..09→000..099 の浅い順）。
+        codes = [c for c in all_codes() if c.startswith(digit)]
+        seen = set()
+        rows = []          # (ownerCount, ncid, s, f, i)
+        raw_rows = 0
+        for code in codes:
+            p = ndc_dir / f"{code}.json"
+            if not p.is_file():
+                continue
+            records = json.loads(p.read_text(encoding="utf-8"))
+            for i, b in enumerate(records):
+                raw_rows += 1
+                ncid = b.get("ncid")
+                if not ncid or ncid in seen:
+                    continue  # 初出＝最も浅いファイルの参照になる
+                seen.add(ncid)
+                s = normalize_search(book_haystack(b))
+                rows.append((b.get("ownerCount") or 0, ncid, s, code, i))
+        # ランキング（所蔵館数降順・同値 ncid 昇順）。site/data/ndc と同一規則。
+        rows.sort(key=lambda r: (-r[0], r[1]))
+        corpus = {
+            "s": [r[2] for r in rows],
+            "f": [r[3] for r in rows],
+            "i": [r[4] for r in rows],
+        }
+        data = json.dumps(corpus, ensure_ascii=False, separators=(",", ":"))
+        (out_dir / f"corpus-{digit}.json").write_text(data, encoding="utf-8")
+        classes_meta.append({
+            "class": digit,
+            "file": f"corpus-{digit}.json",
+            "unique": len(rows),
+            "rawRows": raw_rows,
+            "bytes": len(data.encode("utf-8")),
+        })
+
+    manifest = {
+        "generatedAt": _dt.datetime.now(_dt.timezone.utc)
+        .replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "normalizeVersion": NORMALIZE_VERSION,
+        "format": "columnar",  # {"s":[],"f":[],"i":[]}（docs/site-search-poc.md）
+        "sort": "ownerCount desc, ncid asc",
+        "maxResults": max_results,   # 検索結果の表示上限（所蔵館数上位）
+        "fetchLimit": fetch_limit,   # 書誌本体を解決する分類ファイルの取得上限 K
+        "bodySource": "site/data/ndc/<f>.json の i 行目",
+        "classes": classes_meta,
+    }
+    (out_dir / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return manifest
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="source 一覧 → site/data/books.json")
     p.add_argument("--source", default="source/日本近代文学.json",
@@ -251,11 +334,32 @@ def main(argv=None):
     p.add_argument("--ndc-covers-inplace", action="store_true",
                    help="既存 site/data/ndc/*.json に OpenBD 表紙を後付けする"
                         "（NDC 生キャッシュ不要。--ndc-out を対象に更新）")
+    p.add_argument("--search-index", action="store_true",
+                   help="検索コーパスを生成する（site/data/ndc/ → site/data/search/。"
+                        "docs/site-search.md 手順2。Git 管理外・デプロイ時生成）")
+    p.add_argument("--search-out", default="site/data/search/",
+                   help="検索コーパスの出力ディレクトリ（既定 site/data/search/）")
+    p.add_argument("--search-fetch-limit", type=int, default=30,
+                   help="書誌本体を解決する分類ファイルの取得上限 K"
+                        "（既定 30 ≒ 生 12MB。docs/site-search-poc.md で確定）")
     p.add_argument("--cover-batch", type=int, default=1000,
                    help="OpenBD 1 リクエストの ISBN 数（NDC 一括取得の既定 1000）")
     p.add_argument("--cover-interval", type=float, default=1.0,
                    help="OpenBD リクエスト間隔・秒（既定 1.0。API 提供元へのマナー）")
     args = p.parse_args(argv)
+
+    if args.search_index:
+        manifest = build_search_index(
+            args.ndc_out, args.search_out,
+            max_results=1000,  # 検索結果の表示上限（要件定義）
+            fetch_limit=args.search_fetch_limit)
+        total_uniq = sum(c["unique"] for c in manifest["classes"])
+        total_bytes = sum(c["bytes"] for c in manifest["classes"])
+        print(f"検索コーパス生成: 全 {len(manifest['classes'])} 類"
+              f" / ユニーク {total_uniq:,} 件 -> {Path(args.search_out)}")
+        print(f"  正規化バージョン {manifest['normalizeVersion']}"
+              f" / 生 {total_bytes/1e6:.1f}MB / 取得上限 K={args.search_fetch_limit}")
+        return 0
 
     if args.ndc_covers_inplace:
         files, filled = enrich_ndc_covers_inplace(
