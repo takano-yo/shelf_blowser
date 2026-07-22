@@ -787,6 +787,23 @@ body.about-overlay-open .site-header {
 }
 .overlay__close:hover { color: var(--text); background: var(--surface-2); }
 
+/* オーバーレイ内履歴の戻る/進む（パネル左上・通常フロー）。閉じるボタンと同じ意匠。 */
+.overlay__nav { display: flex; gap: 0.45rem; margin: 0 0 0.8rem; }
+.overlay__navbtn {
+  width: 2rem;
+  height: 2rem;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.overlay__navbtn:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
+.overlay__navbtn:disabled { opacity: 0.35; cursor: default; }
+
 /* 「データについて」は書籍詳細（画面右パネル）と異なり、画面全体を覆うオーバーレイにする。
    開閉は「データについて」ボタンのトグルのみで行う（×ボタンは持たない）。 */
 #about-overlay .overlay__backdrop {
@@ -889,6 +906,55 @@ body.about-overlay-open .site-header {
 }
 .ov__series-list li { margin: 0.15rem 0; }
 .ov__note { font-size: 0.78rem; color: var(--muted); }
+
+/* ===== 関連書（同じ著者・出版社・NDC） ===== */
+/* 書誌詳細・CiNii リンクの下に、種別ごとの横 1 列（あふれは横スクロール）で並べる。
+   タイルは本棚と同じ表紙（書影 or プレースホルダー）のみで、メタ行は付けない。 */
+.ov__related { margin-top: 1.2rem; }
+.ov-rel { margin: 0 0 0.9rem; }
+.ov-rel:last-child { margin-bottom: 0; }
+.ov-rel__heading {
+  margin: 0 0 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.ov-rel__row {
+  display: flex;
+  gap: 0.55rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem; /* スクロールバーぶんの逃げ */
+}
+.ov-rel__item {
+  flex: 0 0 auto;
+  width: 5.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.ov-rel__item:hover .cover,
+.ov-rel__item:focus-visible .cover {
+  box-shadow: 0 6px 14px rgba(31, 155, 196, 0.25);
+}
+.ov-rel__item:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+/* 小さいタイルに合わせてプレースホルダーの文字を縮める。 */
+.ov-rel__item .cover { border-radius: 6px; }
+.ov-rel__item .cover--placeholder { padding: 0.45rem 0.4rem; }
+.ov-rel__item .ph__top { margin-top: 0.15rem; }
+.ov-rel__item .ph__title {
+  font-size: 0.62rem;
+  line-height: 1.3;
+  -webkit-line-clamp: 5;
+}
+.ov-rel__item .ph__author {
+  margin-top: 0.25rem;
+  font-size: 0.56rem;
+  -webkit-line-clamp: 2;
+}
+.ov-rel__item .ph__bottom { font-size: 0.52rem; padding-top: 0.25rem; }
 
 /* ===== スタートページ（入口） ===== */
 /* 検索窓と NDC 分類ナビで初期条件を決めて本棚ページ（shelf.html）へ遷移する。 */

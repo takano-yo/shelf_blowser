@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>shelf_blowser — 日本近代文学の本棚</title>
   <meta name="description" content="CiNii Books の書誌データを本棚のように並べてブラウジングする学術検索支援アプリ（試作版：日本近代文学）">
-  <link rel="stylesheet" href="css/styles.css?v=20260722a">
+  <link rel="stylesheet" href="css/styles.css?v=20260722b">
 </head>
 <body>
   <!-- ページ最上部のヘッダ（タイトル/説明）。スクロールには追随せず流れて消える。 -->
@@ -106,6 +106,12 @@
   <div class="overlay" id="overlay" hidden>
     <div class="overlay__backdrop" data-close></div>
     <aside class="overlay__panel" role="dialog" aria-modal="true" aria-labelledby="ov-title" tabindex="-1">
+      <!-- オーバーレイ内履歴の戻る/進む（左上）。関連書クリックの遷移を行き来する。
+           端（それ以上戻れない/進めない）では JS が disabled を付ける。 -->
+      <div class="overlay__nav">
+        <button class="overlay__navbtn" id="ov-back" type="button" aria-label="前の詳細に戻る" disabled>&lt;</button>
+        <button class="overlay__navbtn" id="ov-fwd" type="button" aria-label="次の詳細に進む" disabled>&gt;</button>
+      </div>
       <button class="overlay__close" type="button" data-close aria-label="閉じる">×</button>
       <div class="overlay__body" id="overlay-body"></div>
     </aside>
@@ -150,6 +156,6 @@
   </footer>
 
   <script src="js/search.js?v=20260722a" defer></script>
-  <script src="js/app.js?v=20260722a" defer></script>
+  <script src="js/app.js?v=20260722b" defer></script>
 </body>
 </html>
