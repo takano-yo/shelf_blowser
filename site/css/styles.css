@@ -250,6 +250,41 @@ body.about-overlay-open .site-header {
 .sort__select:hover { background-color: var(--surface-2); }
 .sort__select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* ===== 検索モード切替（収録データ検索 / CiNii API 検索）＋類セレクタ ===== */
+.search-mode {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  flex: 0 0 auto;
+  order: 3; /* 並べ替え(2)の右、検索窓の左に置く */
+  flex-wrap: wrap;
+}
+.search-mode__field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.search-mode__field[hidden] { display: none; }
+.search-mode__label {
+  font-size: 0.8rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* 選択不可（サーバ未稼働時の API 検索など）は淡色＋カーソル不可にする。 */
+.search-mode__select option:disabled { color: var(--muted); }
+.search-mode__select:disabled { opacity: 0.6; cursor: not-allowed; }
+/* サーバ未稼働などの補足。表示時は 1 行占有（検索バー内で改行）して読みやすくする。 */
+.search-mode__note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: var(--muted);
+}
+.search-mode__note[hidden] { display: none; }
+
 /* ===== シリーズまとめ解除スイッチ ===== */
 /* シリーズタブのときだけ表示。ON=まとめる（既定）／OFF=各巻に分ける。
  * タブ・並べ替えのピル調に合わせ、ラベル＋トグルスイッチで構成する。 */
@@ -1148,6 +1183,41 @@ body.start-page {
   border-radius: 0;
   box-shadow: none;
 }
+
+/* 検索モード切替（収録データ検索 / CiNii API 検索）＋類セレクタ（ダーク配色）。 */
+.start__search-modes {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0 auto 0.8rem;
+}
+.start__search-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.start__search-field[hidden] { display: none; }
+.start__search-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--sp-muted);
+  white-space: nowrap;
+}
+.start__search-select {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--sp-text);
+  background: var(--sp-surface);
+  border: 1px solid var(--sp-line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.start__search-select:hover { background: var(--sp-surface-2); }
+.start__search-select:focus-visible { outline: 2px solid var(--sp-accent); outline-offset: 2px; }
+.start__search-select option:disabled { color: var(--sp-muted); }
+.start__search-select:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* 検索窓（本棚ページの .search を再利用しつつダーク配色に上書き） */
 .start-page .start__search {

@@ -16,6 +16,7 @@
 
 const NDC_INDEX_URL = 'data/ndc/index.json';
 const SHELF_URL = 'shelf.html';
+const PING_URL = 'api/ping';
 
 const els = {
   crumbs: document.getElementById('ndc-crumbs'),
@@ -23,6 +24,18 @@ const els = {
   view: document.getElementById('ndc-view'),
   viewport: document.getElementById('ndc-viewport'),
 };
+
+// 検索モード切替（収録データ検索 / CiNii API 検索）＋類セレクタ。
+const searchEls = {
+  form: document.getElementById('start-search-form'),
+  input: document.getElementById('start-search-input'),
+  mode: document.getElementById('start-search-mode'),
+  cls: document.getElementById('start-search-class'),
+  classField: document.getElementById('start-class-field'),
+  note: document.getElementById('start-search-note'),
+};
+let serverUp = false; // /api/ping による稼働判定（未稼働なら API 検索を不可にする）
+const DEFAULT_NOTE_HTML = searchEls.note ? searchEls.note.innerHTML : '';
 
 const prefersReducedMotion =
   window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -200,14 +213,106 @@ function bindEvents() {
   });
 }
 
+/* ---------- 検索モード切替（スタートページ） ---------- */
+
+/* サーバ稼働判定。/api/ping が {"ok":true} を返せば true。失敗・タイムアウトで false。 */
+async function pingServer(timeoutMs = 2500) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(PING_URL, { signal: ctrl.signal });
+    if (!r.ok) return false;
+    const j = await r.json();
+    return j && j.ok === true;
+  } catch (e) {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* 類セレクタ（0〜9・分類名つき）を構築する。分類名は byCode（index.json）から。 */
+function populateClassSelect() {
+  if (!searchEls.cls) return;
+  const cur = searchEls.cls.value || '9';
+  const opts = [];
+  for (let d = 0; d < 10; d++) {
+    const c = String(d);
+    const e = byCode.get(c);
+    const label = (e && e.label) || '';
+    opts.push(`<option value="${c}">${c}${label ? ' ' + escapeHtml(label) : ''}</option>`);
+  }
+  searchEls.cls.innerHTML = opts.join('');
+  searchEls.cls.value = cur; // 既定は 9（サイトの既定棚＝日本近代文学は NDC 9 系）
+}
+
+/* モードに応じて類セレクタの表示可否・サーバ未稼働時のグレーアウトを更新する。 */
+function syncSearchModeUi() {
+  const mode = searchEls.mode ? searchEls.mode.value : 'data';
+  if (searchEls.classField) searchEls.classField.hidden = mode !== 'data';
+  if (searchEls.mode) {
+    const apiOpt = searchEls.mode.querySelector('option[value="api"]');
+    if (apiOpt) apiOpt.disabled = !serverUp;
+    if (!serverUp && searchEls.mode.value === 'api') {
+      searchEls.mode.value = 'data';
+      if (searchEls.classField) searchEls.classField.hidden = false;
+    }
+  }
+  if (searchEls.note) {
+    searchEls.note.innerHTML = serverUp
+      ? DEFAULT_NOTE_HTML
+      : '検索サーバー未稼働のため <strong>CiNii API 検索</strong> は使用できません。収録データ（<a href="https://ci.nii.ac.jp/books/" target="_blank" rel="noopener">CiNii Books</a> のスナップショット）から NDC 類（1桁）内を検索します。';
+  }
+}
+
+/* 各検索語が 2 文字以上か（1 文字語を含むなら false）。docs/site-search.md 決定4。 */
+function queryLongEnough(q) {
+  const ts = q.split(/\s+/).filter(Boolean);
+  return ts.length > 0 && ts.every((t) => t.length >= 2);
+}
+
+/* 検索フォーム送信を横取りしてモード別の URL を組み立て、本棚ページへ遷移する。
+ * JS 無効時は素の GET フォーム（?q= のみ）として後方互換で動く。 */
+function bindSearch() {
+  if (searchEls.mode) {
+    searchEls.mode.addEventListener('change', syncSearchModeUi);
+  }
+  if (!searchEls.form) return;
+  searchEls.form.addEventListener('submit', (e) => {
+    const q = (searchEls.input ? searchEls.input.value : '').trim();
+    if (!q) { e.preventDefault(); location.href = SHELF_URL; return; }
+    if (!queryLongEnough(q)) {
+      e.preventDefault();
+      if (searchEls.note) searchEls.note.textContent = '検索語は 2 文字以上で入力してください。';
+      return;
+    }
+    e.preventDefault();
+    const mode = searchEls.mode ? searchEls.mode.value : 'data';
+    let url;
+    if (mode === 'api' && serverUp) {
+      url = `${SHELF_URL}?q=${encodeURIComponent(q)}&mode=api`;
+    } else {
+      const cls = searchEls.cls ? searchEls.cls.value : '9';
+      url = `${SHELF_URL}?ndc=${encodeURIComponent(cls)}&q=${encodeURIComponent(q)}`;
+    }
+    location.href = url;
+  });
+}
+
 async function init() {
   bindEvents();
+  bindSearch();
+  populateClassSelect();
+  syncSearchModeUi();
+  // サーバ稼働判定（非同期・完了後にモード UI を更新）。未稼働でも収録データ検索は成立。
+  pingServer().then((up) => { serverUp = up; syncSearchModeUi(); });
   try {
     const r = await fetch(NDC_INDEX_URL);
     if (!r.ok) throw new Error(r.status);
     const index = await r.json();
     for (const c of index.classes || []) byCode.set(c.code, c);
     if (!byCode.size) throw new Error('classes が空です');
+    populateClassSelect(); // 分類名つきで作り直す
     updateChrome();
     activeGrid = makeGrid(path);
     els.viewport.replaceChildren(activeGrid);
