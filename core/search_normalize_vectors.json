@@ -1,0 +1,106 @@
+{
+  "version": "1",
+  "note": "サイト内検索の照合用正規化。Python(core.search_normalize)とJS(js/search.js)が同一結果になることを双方のテストで検証する。表示は原文のまま。",
+  "cases": [
+    {
+      "desc": "空文字",
+      "input": "",
+      "expected": ""
+    },
+    {
+      "desc": "全角英数→半角・小文字",
+      "input": "ＡＢＣ１２３",
+      "expected": "abc123"
+    },
+    {
+      "desc": "英字小文字化",
+      "input": "Python",
+      "expected": "python"
+    },
+    {
+      "desc": "半角カナ→全角→ひらがな",
+      "input": "ｶﾀｶﾅ",
+      "expected": "かたかな"
+    },
+    {
+      "desc": "カタカナ→ひらがな",
+      "input": "トウキヨウ",
+      "expected": "とうきよう"
+    },
+    {
+      "desc": "小書きョ→よ（カナ経由）",
+      "input": "トウキョウ",
+      "expected": "とうきよう"
+    },
+    {
+      "desc": "ヴ→ゔ",
+      "input": "ヴァイオリン",
+      "expected": "ゔあいおりん"
+    },
+    {
+      "desc": "小書き各種（ひらがな）",
+      "input": "ぁぃぅぇぉっゃゅょゎ",
+      "expected": "あいうえおつやゆよわ"
+    },
+    {
+      "desc": "小書きゕゖ",
+      "input": "ゕゖ",
+      "expected": "かけ"
+    },
+    {
+      "desc": "長音ーは保持",
+      "input": "コーヒー",
+      "expected": "こーひー"
+    },
+    {
+      "desc": "長音違い（ー1つ）",
+      "input": "コンピュータ",
+      "expected": "こんぴゆーた"
+    },
+    {
+      "desc": "長音違い（ー2つ）",
+      "input": "コンピューター",
+      "expected": "こんぴゆーたー"
+    },
+    {
+      "desc": "互換分解①→1",
+      "input": "①巻",
+      "expected": "1巻"
+    },
+    {
+      "desc": "互換分解㈱→(株)",
+      "input": "㈱テスト",
+      "expected": "(株)てすと"
+    },
+    {
+      "desc": "ローマ数字Ⅳ→iv",
+      "input": "Ⅳ",
+      "expected": "iv"
+    },
+    {
+      "desc": "全角スペース→半角",
+      "input": "東京　大学",
+      "expected": "東京 大学"
+    },
+    {
+      "desc": "濁点は保持（は≠ば）",
+      "input": "ばびぶべぼ",
+      "expected": "ばびぶべぼ"
+    },
+    {
+      "desc": "結合文字ガ→が",
+      "input": "ガ",
+      "expected": "が"
+    },
+    {
+      "desc": "漢字はそのまま",
+      "input": "日本文学",
+      "expected": "日本文学"
+    },
+    {
+      "desc": "複合語（AND用）",
+      "input": "夏目漱石 こころ",
+      "expected": "夏目漱石 こころ"
+    }
+  ]
+}
