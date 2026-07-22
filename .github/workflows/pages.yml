@@ -1,14 +1,22 @@
 name: Deploy site to GitHub Pages
 
 # site/ ディレクトリ（build が生成した site/data/*.json を含む静的サイト）を
-# GitHub Pages として公開する。データは build/build.py で生成済みのものを
-# そのまま配信するため、ここではビルドを行わず site/ を配置するだけでよい。
+# GitHub Pages として公開する。書誌データ（site/data/ndc/・books.json）は
+# build/build.py で生成済みのものをそのまま配信する。
+#
+# 検索コーパス（site/data/search/）だけは、リポジトリにコミットせず
+# **このデプロイ時に生成**する（docs/site-search.md 手順5・問題点と対処 #6）。
+# site/data/ndc/ から冪等生成されるため、データ更新（ndc の再取得）時も
+# デプロイのたびに自動で追随する。
 
 on:
   push:
     branches: [main]
     paths:
       - 'site/**'
+      - 'build/**'      # コーパス生成器（build.py）の変更でも再デプロイ
+      - 'core/**'       # 正規化規則（search_normalize.py）の変更でも再デプロイ
+      - 'fetch/**'      # 分類記号一覧（ndc_fetch.all_codes）の変更でも再デプロイ
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -31,6 +39,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Build search corpus (site/data/search/)
+        # site/data/ndc/ から検索コーパスを冪等生成する。標準ライブラリのみで動作し、
+        # ネットワークは使わない。生成物はコミットせずこのデプロイにのみ含める。
+        run: python build/build.py --search-index
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
