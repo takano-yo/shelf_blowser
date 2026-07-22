@@ -228,6 +228,77 @@ def enrich_ndc_covers_inplace(ndc_out, cache=".cache/openbd/",
     return len(code_files), filled
 
 
+def build_ndc_rev(ndc_dir, out_dir):
+    """`site/data/ndc/` の 3 桁分類ファイルから NCID → 3 桁分類記号の逆引き
+    シャード（`site/data/ndc/rev/`）を生成する（docs/detail-related-books.md D1）。
+
+    書誌レコードは NDC を持たないため、「どの 3 桁分類棚に載っているか」を
+    書誌詳細（関連書・NDC 逆引きリンク）から引けるようにする。
+    `--ndc-covers-inplace` と同じく、コミット済みの成果物 `site/data/ndc/*.json`
+    のみを入力とする（`.cache/ndc/` の生キャッシュ不要）。
+
+    - シャード: NCID の**末尾 2 文字**で分割（`<XX>.json`）。実測でほぼ均等
+      （110 シャード・各約 7,000 件）。クライアントは書誌の NCID から該当
+      シャード 1 個だけを取得する。
+    - シャードの中身: `{ "<NCID>": ["913"], "<NCID>": ["000","031"], ... }`
+      （キー昇順・値＝3 桁分類記号の昇順配列）。
+    - 冪等: 同じ分類データからはシャードがバイト一致で再生成される
+      （index.json の generatedAt のみ実行時刻で変わる）。分類データの更新で
+      消えたシャードは削除する（rev/ は全体が派生成果物）。
+    """
+    ndc_dir = Path(ndc_dir)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    ncid_codes = {}          # ncid -> set of 3 桁分類記号
+    source_files = source_records = 0
+    for code in all_codes():
+        if len(code) != 3:
+            continue
+        p = ndc_dir / f"{code}.json"
+        if not p.is_file():
+            continue
+        source_files += 1
+        for b in json.loads(p.read_text(encoding="utf-8")):
+            ncid = b.get("ncid")
+            if not ncid:
+                continue
+            source_records += 1
+            ncid_codes.setdefault(ncid, set()).add(code)
+
+    # シャード分割（NCID 末尾 2 文字）→ キー昇順・値昇順で決定的に出力。
+    shards = {}              # suffix -> {ncid: [codes...]}
+    for ncid, codes in ncid_codes.items():
+        shards.setdefault(ncid[-2:], {})[ncid] = sorted(codes)
+    for suffix, mapping in shards.items():
+        (out_dir / f"{suffix}.json").write_text(
+            json.dumps(dict(sorted(mapping.items())), ensure_ascii=False,
+                       separators=(",", ":")),
+            encoding="utf-8",
+        )
+
+    # 分類データの更新で対応先が無くなった古いシャードを片付ける。
+    keep = {f"{s}.json" for s in shards} | {"index.json"}
+    for p in out_dir.glob("*.json"):
+        if p.name not in keep:
+            p.unlink()
+
+    index = {
+        "generatedAt": _dt.datetime.now(_dt.timezone.utc)
+        .replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "purpose": "NCID → 3 桁 NDC 分類記号の逆引き（書誌詳細の関連書・NDC 逆引きリンク用）",
+        "shardKey": "NCID 末尾 2 文字（<XX>.json）",
+        "sourceFiles": source_files,
+        "sourceRecords": source_records,
+        "uniqueNcids": len(ncid_codes),
+        "shards": len(shards),
+    }
+    (out_dir / "index.json").write_text(
+        json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return index
+
+
 # ---------------------------------------------------------------------------
 # 検索コーパスの生成（--search-index） … docs/site-search.md 実装手順 2
 # ---------------------------------------------------------------------------
@@ -334,6 +405,10 @@ def main(argv=None):
     p.add_argument("--ndc-covers-inplace", action="store_true",
                    help="既存 site/data/ndc/*.json に OpenBD 表紙を後付けする"
                         "（NDC 生キャッシュ不要。--ndc-out を対象に更新）")
+    p.add_argument("--ndc-rev", action="store_true",
+                   help="NCID→3桁NDC の逆引きシャードを生成する"
+                        "（site/data/ndc/ → site/data/ndc/rev/。"
+                        "docs/detail-related-books.md D1。生キャッシュ不要）")
     p.add_argument("--search-index", action="store_true",
                    help="検索コーパスを生成する（site/data/ndc/ → site/data/search/。"
                         "docs/site-search.md 手順2。Git 管理外・デプロイ時生成）")
@@ -347,6 +422,15 @@ def main(argv=None):
     p.add_argument("--cover-interval", type=float, default=1.0,
                    help="OpenBD リクエスト間隔・秒（既定 1.0。API 提供元へのマナー）")
     args = p.parse_args(argv)
+
+    if args.ndc_rev:
+        index = build_ndc_rev(args.ndc_out, Path(args.ndc_out) / "rev")
+        print(f"NDC 逆引きシャード生成: {index['shards']} シャード"
+              f" / ユニーク NCID {index['uniqueNcids']:,} 件"
+              f"（3 桁分類 {index['sourceFiles']} ファイル・"
+              f"延べ {index['sourceRecords']:,} レコード）"
+              f" -> {Path(args.ndc_out) / 'rev'}")
+        return 0
 
     if args.search_index:
         manifest = build_search_index(
