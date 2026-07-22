@@ -766,6 +766,9 @@ function overlayHtml(item) {
         ${seriesBlock}
         <dl class="ov__dl">${dl}</dl>
         <a class="ov__link" href="${escapeHtml(book.ciniiUrl)}" target="_blank" rel="noopener">CiNii で見る →</a>
+        <!-- NDC 棚への逆引きリンク（1/2/3 桁）。書誌の NDC が引けたときだけ
+             fillRelated が中身を描画して表示する（R4）。 -->
+        <div class="ov__ndc" id="ov-ndc-links" hidden></div>
       </div>
     </div>`;
 }
@@ -902,24 +905,25 @@ async function fillRelated(item, seq) {
     : [];
 
   // NDC 行: 逆引き→主分類→その分類棚ファイルの上位から。分類名は index.json から。
-  let ndc = [], ndcHeading = '';
+  // 主分類が引けたときは NDC 棚への逆引きリンク（1/2/3 桁）も併せて出す（R4）。
+  let ndc = [], ndcHeading = '', index = null;
   const code = primaryNdcCode(await ndcCodesFor(book.ncid));
   if (code) {
-    const [pool, index] = await Promise.all([
+    let pool;
+    [pool, index] = await Promise.all([
       loadNdcShelf(code),
       loadNdcIndex().catch(() => null),
     ]);
     if (pool) {
       ndc = pickRelated(book, pool, exclude, () => true); // 棚ファイル収録 = 分類一致
-      const entry = (index && Array.isArray(index.classes))
-        ? index.classes.find((c) => c.code === code) : null;
-      const label = (entry && entry.label) ? ` ${escapeHtml(entry.label)}` : '';
-      ndcHeading = `同じ分類（NDC ${escapeHtml(code)}${label}）`;
+      const label = ndcLabelFor(index, code);
+      ndcHeading = `同じ分類（NDC ${escapeHtml(code)}${label ? ' ' + escapeHtml(label) : ''}）`;
     }
   }
 
   if (seq !== ovSeq) return; // 既に別の書誌へ遷移済み
   ovRelated = { author, publisher, ndc };
+  renderNdcLinks(code, index);
   const target = document.getElementById('ov-related');
   if (!target) return;
   target.innerHTML =
@@ -927,6 +931,38 @@ async function fillRelated(item, seq) {
     relatedRowHtml('publisher', '同じ出版社', publisher) +
     relatedRowHtml('ndc', ndcHeading, ndc);
   target.setAttribute('aria-busy', 'false');
+}
+
+/* NDC マスタから分類名を引く（無ければ ''）。 */
+function ndcLabelFor(index, code) {
+  const entry = (index && Array.isArray(index.classes))
+    ? index.classes.find((c) => c.code === code) : null;
+  return (entry && entry.label) || '';
+}
+
+/* NDC 棚への逆引きリンク 1 個（R4）。背景の棚（currentNdc）と一致する記号は
+ * リンクにせずグレーアウトする。リンクは通常のページ遷移（棚ごと切り替え）。 */
+function ndcLinkHtml(code, index) {
+  const label = ndcLabelFor(index, code);
+  const text = escapeHtml(code) + (label ? ` ${escapeHtml(label)}` : '');
+  if (code === currentNdc) {
+    return `<span class="ov__ndc-btn ov__ndc-btn--current" aria-disabled="true"
+                  title="表示中の棚">${text}</span>`;
+  }
+  return `<a class="ov__ndc-btn" href="?ndc=${encodeURIComponent(code)}"
+             title="NDC ${escapeHtml(code)} の棚を開く">${text}</a>`;
+}
+
+/* 詳細中の書誌の主分類から 1・2・3 桁の逆引きリンク行を描画する。
+ * NDC 不明（code なし）のときは行ごと出さない。 */
+function renderNdcLinks(code, index) {
+  const el = document.getElementById('ov-ndc-links');
+  if (!el) return;
+  if (!code) { el.hidden = true; return; }
+  const prefixes = [code.slice(0, 1), code.slice(0, 2), code];
+  el.innerHTML = '<span class="ov__ndc-label">NDC 棚:</span>'
+    + prefixes.map((c) => ndcLinkHtml(c, index)).join('');
+  el.hidden = false;
 }
 
 /* 戻る/進むボタンの活性状態を履歴位置に合わせる。 */
