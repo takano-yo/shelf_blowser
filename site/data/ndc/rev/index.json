@@ -1,0 +1,9 @@
+{
+  "generatedAt": "2026-07-22T04:00:31Z",
+  "purpose": "NCID → 3 桁 NDC 分類記号の逆引き（書誌詳細の関連書・NDC 逆引きリンク用）",
+  "shardKey": "NCID 末尾 2 文字（<XX>.json）",
+  "sourceFiles": 1000,
+  "sourceRecords": 826548,
+  "uniqueNcids": 774473,
+  "shards": 110
+}
