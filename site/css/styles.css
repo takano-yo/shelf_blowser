@@ -771,23 +771,8 @@ body.about-overlay-open .site-header {
   overflow-y: auto;
   animation: slide-in 0.18s ease;
 }
-.overlay__close {
-  position: absolute;
-  top: 0.8rem;
-  right: 0.9rem;
-  width: 2rem;
-  height: 2rem;
-  font-size: 1.3rem;
-  line-height: 1;
-  color: var(--muted);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  cursor: pointer;
-}
-.overlay__close:hover { color: var(--text); background: var(--surface-2); }
-
-/* オーバーレイ内履歴の戻る/進む（パネル左上・通常フロー）。閉じるボタンと同じ意匠。 */
+/* パネル左上の操作ボタン列: 閉じる（✖）・戻る（<）・進む（>）。3 つとも同じ大きさ・
+   同じ意匠で等間隔（gap）に横並びにする。戻る/進むは端で disabled になる。 */
 .overlay__nav { display: flex; gap: 0.45rem; margin: 0 0 0.6rem; }
 .overlay__navbtn {
   width: 2rem;
@@ -803,6 +788,8 @@ body.about-overlay-open .site-header {
 }
 .overlay__navbtn:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
 .overlay__navbtn:disabled { opacity: 0.35; cursor: default; }
+/* 閉じる（✖）だけは端ボタンと違い常時有効。字形が細いので少しだけ大きく見せる。 */
+.overlay__navbtn--close { font-size: 0.95rem; }
 
 /* 「データについて」は書籍詳細（画面右パネル）と異なり、画面全体を覆うオーバーレイにする。
    開閉は「データについて」ボタンのトグルのみで行う（×ボタンは持たない）。 */
@@ -846,29 +833,41 @@ body.about-overlay-open .site-header {
 .about-body__section ul { margin: 0.3rem 0 0; padding-left: 1.2rem; font-size: 0.88rem; }
 .about-body__section li { margin: 0.2rem 0; }
 
-/* 上段: 書影（左）＋書誌情報（右）の 2 カラム。縦を圧縮して関連書の場所を確保する。
-   書影なしの書誌では情報カラムのみが全幅に伸びる。 */
-.ov__head {
+/* タイトル・著者・バッジは全幅の上段（ov__title-area）に置く。 */
+.ov__title-area { margin: 0 0 0.8rem; }
+
+/* 下段: 「書影／出版社〜NCID の書誌情報／CiNii・NDC 棚ボタン」を横並びにする。
+   書影がある場合は 3 カラム、無ければ 2 カラム。縦を圧縮して関連書の場所を確保する。 */
+.ov__cols {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 1.25rem;
   margin: 0 0 0.8rem;
 }
-.ov__info { flex: 1 1 auto; min-width: 0; }
+.ov__cover-col { flex: 0 0 auto; }
+.ov__dl-col { flex: 1 1 12rem; min-width: 0; }
+/* CiNii で見る／NDC 棚ボタンの列。縦積みで並べる。 */
+.ov__actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  min-width: 10rem;
+}
 
-/* 詳細画面の上部に表示する書影（書影ありの場合のみ） */
+/* 詳細画面の書影（書影ありの場合のみ・左カラム） */
 .ov__cover {
   display: block;
-  flex: 0 0 auto;
-  width: 150px;
-  max-width: 40%;
+  width: 120px;
+  max-width: 100%;
   height: auto;
   margin: 0;
   border: 1px solid var(--line);
   border-radius: 4px;
   box-shadow: 0 4px 14px rgba(31, 155, 196, 0.18);
 }
-.ov__title { margin: 0 2rem 0.3rem 0; font-size: 1.2rem; line-height: 1.4; }
+.ov__title { margin: 0 0 0.3rem; font-size: 1.2rem; line-height: 1.4; }
 .ov__author { margin: 0 0 0.7rem; color: var(--muted); }
 .ov__badge {
   display: inline-block;
@@ -880,19 +879,20 @@ body.about-overlay-open .site-header {
   background: var(--accent);
   border-radius: 999px;
 }
-.ov__dl { margin: 0 0 0.8rem; display: grid; grid-template-columns: 6rem 1fr; gap: 0.3rem 0.75rem; font-size: 0.85rem; }
+.ov__dl { margin: 0; display: grid; grid-template-columns: 5rem 1fr; gap: 0.3rem 0.7rem; font-size: 0.85rem; }
 .ov__dl dt { color: var(--muted); }
 /* 値が長い項目（多巻ものの ISBN 列挙など）で縦に伸びないよう、項目内スクロールに畳む。 */
 .ov__dl dd { margin: 0; word-break: break-word; max-height: 4.5em; overflow-y: auto; }
 .ov__link {
-  display: inline-block;
-  margin-top: 0.3rem;
+  display: block;
+  margin: 0;
   padding: 0.45rem 1rem;
   font-weight: 700;
   color: #fff;
   background: var(--sky-deep);
   border-radius: var(--radius);
   text-decoration: none;
+  text-align: center;
 }
 .ov__link:hover { background: var(--sky); }
 /* シリーズ収録巻リスト。巻数が多くても詳細全体を押し下げないよう内部スクロールに畳む。 */
@@ -908,13 +908,14 @@ body.about-overlay-open .site-header {
 .ov__note { margin: 0.2rem 0; font-size: 0.74rem; color: var(--muted); }
 
 /* ===== NDC 棚への逆引きリンク（1/2/3 桁） ===== */
-/* CiNii リンクの下に並べる。背景の棚と一致する記号はグレーアウト（リンクなし）。 */
+/* CiNii ボタンの下（アクション列内）に、見出し「このNDCの棚を見る」＋1/2/3 桁の
+   ボタンを縦 4 行に並べる。背景の棚と一致する記号はグレーアウト（リンクなし）。 */
 .ov__ndc {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.8rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin-top: 0;
 }
 .ov__ndc-label {
   font-size: 0.78rem;
@@ -924,7 +925,7 @@ body.about-overlay-open .site-header {
 }
 .ov__ndc-btn {
   display: inline-block;
-  max-width: 13rem;
+  max-width: 100%;
   padding: 0.25rem 0.7rem;
   font-size: 0.78rem;
   font-weight: 700;
@@ -996,6 +997,24 @@ a.ov__ndc-btn:focus-visible { color: #fff; background: var(--sky-deep); border-c
   -webkit-line-clamp: 2;
 }
 .ov-rel__item .ph__bottom { font-size: 0.52rem; padding-top: 0.25rem; }
+
+/* 関連書タイルのホバー詳細ポップアップ。内容は本棚の cover-detail を転用しつつ、
+   タイルの上に固定配置で浮かせて読める大きさを確保する。フェードは cover-detail の
+   opacity トランジションをそのまま使う（非表示時も測定のため display は保つ）。 */
+.ov-rel-pop {
+  position: fixed;
+  inset: auto;
+  z-index: 60;                 /* オーバーレイ（z-index:50）より前面 */
+  width: 15rem;
+  max-width: calc(100vw - 1rem);
+  padding: 0.7rem 0.75rem;
+  background: #fff;            /* 浮遊表示なので不透明にする */
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(22, 50, 63, 0.28);
+  font-size: 0.75rem;
+  pointer-events: none;       /* ホバー判定・スクロールに干渉しない */
+}
 
 /* ===== スタートページ（入口） ===== */
 /* 検索窓と NDC 分類ナビで初期条件を決めて本棚ページ（shelf.html）へ遷移する。 */
@@ -1203,9 +1222,11 @@ a.ov__ndc-btn:focus-visible { color: #fff; background: var(--sky-deep); border-c
     /* 下スワイプで閉じられることを示すドラッグハンドル分の余白 */
     padding-top: 1.6rem;
   }
-  /* モバイルは 2 カラムにせず従来どおり縦積み（幅が足りないため）。 */
-  .ov__head { display: block; }
-  .ov__cover { margin: 0 0 1rem; max-width: 50%; }
+  /* モバイルは横並びにせず縦積み（幅が足りないため）。書影・書誌情報・
+     アクション列を上から順に積む。 */
+  .ov__cols { flex-direction: column; gap: 1rem; }
+  .ov__actions { min-width: 0; }
+  .ov__cover { width: 40%; margin: 0; }
 
   /* ドラッグハンドル（つまみ）: 下スワイプで閉じられることを示唆 */
   .overlay__panel:not(.overlay__panel--about)::before {
