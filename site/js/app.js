@@ -721,6 +721,43 @@ function hideCoverDetail() {
   if (coverDetail.parentNode) coverDetail.parentNode.removeChild(coverDetail);
 }
 
+/* ---------- 関連書タイルのホバー詳細（浮遊ポップアップ） ----------
+ * 本棚の表紙ホバー詳細と同じ内容（coverDetailHtml）を関連書タイルの上に浮かせて出す。
+ * 関連書タイルは小さく本棚の inset:0 交代方式では読めないため、タイル付近へ固定配置の
+ * ポップアップとして表示する（内容生成は本棚のモジュールを転用）。ポインタ判定に
+ * 干渉しないよう pointer-events:none（CSS 側）で敷く。 */
+const ovRelPop = document.createElement('div');
+ovRelPop.className = 'ov-rel-pop cover-detail';
+ovRelPop.setAttribute('aria-hidden', 'true');
+document.body.appendChild(ovRelPop);
+
+// tile（.ov-rel__item）の位置に合わせてポップアップを配置する。原則タイルの上へ、
+// 上に余地が無ければ下へ。左右は画面内に収める。
+function positionRelPop(tile) {
+  const r = tile.getBoundingClientRect();
+  const pw = ovRelPop.offsetWidth;
+  const ph = ovRelPop.offsetHeight;
+  const gap = 8;
+  let left = Math.min(r.left, window.innerWidth - pw - gap);
+  left = Math.max(gap, left);
+  let top = r.top - ph - gap;
+  if (top < gap) top = r.bottom + gap; // 上に入らなければタイルの下へ
+  ovRelPop.style.left = `${left}px`;
+  ovRelPop.style.top = `${top}px`;
+}
+
+function showRelPop(book, tile) {
+  const item = { type: 'single', book, volumes: (book.isbn && book.isbn.length) || 0 };
+  ovRelPop.innerHTML = coverDetailHtml(item);
+  positionRelPop(tile);
+  void ovRelPop.offsetWidth; // 実寸確定後にフェード開始（初回のカクつき防止）
+  ovRelPop.classList.add('is-on');
+}
+
+function hideRelPop() {
+  ovRelPop.classList.remove('is-on');
+}
+
 /* ---------- 詳細オーバーレイ ---------- */
 
 function overlayHtml(item) {
@@ -751,23 +788,29 @@ function overlayHtml(item) {
     seriesBlock = `<div class="ov__badge">${escapeHtml(book.series[0].title)}</div>`;
   }
 
-  const coverImg = book.coverUrl
-    ? `<img class="ov__cover" src="${escapeHtml(book.coverUrl)}" alt="${escapeHtml(book.title)} の表紙">`
+  const coverCol = book.coverUrl
+    ? `<div class="ov__cover-col"><img class="ov__cover" src="${escapeHtml(book.coverUrl)}" alt="${escapeHtml(book.title)} の表紙"></div>`
     : '';
 
-  // 上段は書影（左）＋書誌情報（右）の 2 カラム。縦を圧縮し、下に続く関連書
-  // （docs/detail-related-books.md）と合わせて 1 画面へ収めるための器。
+  // タイトル・著者・バッジを上段（全幅）に置き、その下を横並びカラムにする。
+  // 下段は「書影（あれば）／出版社〜NCID の書誌情報／CiNii・NDC 棚ボタン」の
+  // 2〜3 カラム（書影がある場合のみ 3 カラム）。関連書（docs/detail-related-books.md）
+  // と合わせて 1 画面へ収めるため縦を圧縮する。
   return `
-    <div class="ov__head">
-      ${coverImg}
-      <div class="ov__info">
-        <h2 class="ov__title" id="ov-title">${escapeHtml(book.title)}</h2>
-        <p class="ov__author">${escapeHtml(authorText(book))}</p>
-        ${seriesBlock}
+    <div class="ov__title-area">
+      <h2 class="ov__title" id="ov-title">${escapeHtml(book.title)}</h2>
+      <p class="ov__author">${escapeHtml(authorText(book))}</p>
+      ${seriesBlock}
+    </div>
+    <div class="ov__cols">
+      ${coverCol}
+      <div class="ov__dl-col">
         <dl class="ov__dl">${dl}</dl>
+      </div>
+      <div class="ov__actions">
         <a class="ov__link" href="${escapeHtml(book.ciniiUrl)}" target="_blank" rel="noopener">CiNii で見る →</a>
-        <!-- NDC 棚への逆引きリンク（1/2/3 桁）。書誌の NDC が引けたときだけ
-             fillRelated が中身を描画して表示する（R4）。 -->
+        <!-- NDC 棚への逆引きリンク（見出し＋1/2/3 桁を縦に並べる）。書誌の NDC が
+             引けたときだけ fillRelated が中身を描画して表示する（R4）。 -->
         <div class="ov__ndc" id="ov-ndc-links" hidden></div>
       </div>
     </div>`;
@@ -917,7 +960,8 @@ async function fillRelated(item, seq) {
     if (pool) {
       ndc = pickRelated(book, pool, exclude, () => true); // 棚ファイル収録 = 分類一致
       const label = ndcLabelFor(index, code);
-      ndcHeading = `同じ分類（NDC ${escapeHtml(code)}${label ? ' ' + escapeHtml(label) : ''}）`;
+      // 見出しは「同じ分類：NDC <記号> <分類名>」（かっこを使わず ":" 区切り）。
+      ndcHeading = `同じ分類：NDC ${escapeHtml(code)}${label ? ' ' + escapeHtml(label) : ''}`;
     }
   }
 
@@ -926,9 +970,11 @@ async function fillRelated(item, seq) {
   renderNdcLinks(code, index);
   const target = document.getElementById('ov-related');
   if (!target) return;
+  // 各見出しの後に "：" と対象の名前（著者名／出版社名／分類名）を添える。
+  // 名前が空の行は関連書自体が 0 件で描画されないため、常に名前付きで組み立てる。
   target.innerHTML =
-    relatedRowHtml('author', '同じ著者', author) +
-    relatedRowHtml('publisher', '同じ出版社', publisher) +
+    relatedRowHtml('author', `同じ著者：${escapeHtml(authorName(book))}`, author) +
+    relatedRowHtml('publisher', `同じ出版社：${escapeHtml(publisherText(book))}`, publisher) +
     relatedRowHtml('ndc', ndcHeading, ndc);
   target.setAttribute('aria-busy', 'false');
 }
@@ -960,7 +1006,7 @@ function renderNdcLinks(code, index) {
   if (!el) return;
   if (!code) { el.hidden = true; return; }
   const prefixes = [code.slice(0, 1), code.slice(0, 2), code];
-  el.innerHTML = '<span class="ov__ndc-label">NDC 棚:</span>'
+  el.innerHTML = '<span class="ov__ndc-label">このNDCの棚を見る</span>'
     + prefixes.map((c) => ndcLinkHtml(c, index)).join('');
   el.hidden = false;
 }
@@ -975,6 +1021,7 @@ function updateOverlayNav() {
 function renderOverlayView() {
   const item = ovHistory.stack[ovHistory.pos];
   const seq = ++ovSeq;
+  hideRelPop(); // 遷移で古いタイルが消えるため関連書ポップアップを閉じる
   ovRelated = { author: [], publisher: [], ndc: [] };
   els.overlayBody.innerHTML = overlayHtml(item)
     + '<div class="ov__related" id="ov-related" aria-busy="true"></div>';
@@ -1022,6 +1069,7 @@ function openOverlay(item) {
 
 function closeOverlay() {
   ovSeq++; // 取得途中の関連書を捨てる（閉じた後に差し込まない）
+  hideRelPop();
   els.overlay.hidden = true;
   if (!els.aboutOverlay || els.aboutOverlay.hidden) document.body.style.overflow = '';
   const panel = els.overlay.querySelector('.overlay__panel');
@@ -1230,6 +1278,28 @@ function bindEvents() {
     pushOverlayBook(book);
     els.overlay.querySelector('.overlay__panel').focus();
   });
+
+  // 関連書タイルの表紙ホバーで詳細ポップアップを出す（本棚の表紙ホバーと同じ内容）。
+  // 検出は表紙（.cover）のみで、対象書誌は data-rel（種別:添字）から引く。
+  els.overlayBody.addEventListener('mouseover', (e) => {
+    const cover = e.target.closest('.cover');
+    if (!cover) return;
+    const tile = cover.closest('.ov-rel__item');
+    if (!tile) return;
+    const [kind, idx] = tile.dataset.rel.split(':');
+    const book = ovRelated[kind] && ovRelated[kind][+idx];
+    if (book) showRelPop(book, tile);
+  });
+  els.overlayBody.addEventListener('mouseout', (e) => {
+    const cover = e.target.closest('.cover');
+    if (!cover || !cover.closest('.ov-rel__item')) return;
+    const to = e.relatedTarget;
+    // タイルの外（別のタイル・余白）へ出たら閉じる。別タイルへは mouseover で貼り替わる。
+    if (!to || !to.closest || !to.closest('.ov-rel__item')) hideRelPop();
+  });
+  // パネルを縦スクロールするとタイル位置がずれるため、ポップアップを閉じる。
+  const ovPanel = els.overlay.querySelector('.overlay__panel');
+  if (ovPanel) ovPanel.addEventListener('scroll', hideRelPop, { passive: true });
 
   // オーバーレイ内履歴の戻る/進む
   if (els.ovBack) els.ovBack.addEventListener('click', () => moveOverlayHistory(-1));
