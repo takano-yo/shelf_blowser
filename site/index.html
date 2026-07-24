@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>shelf_blowser — 本棚ブラウジングの入口</title>
   <meta name="description" content="キーワードまたは NDC 分類（日本十進分類法）から入る、書誌データの本棚ブラウジング">
-  <link rel="stylesheet" href="css/styles.css?v=20260722a">
+  <link rel="stylesheet" href="css/styles.css?v=20260724a">
 </head>
 <body class="start-page">
   <main class="start">
@@ -32,15 +32,19 @@
         </label>
       </div>
       <form class="search start__search" action="shelf.html" method="get" role="search" aria-label="書誌検索" id="start-search-form">
-        <input
-          class="search__input"
-          id="start-search-input"
-          type="search"
-          name="q"
-          placeholder="キーワードから探す（例: 漱石 小説）"
-          aria-label="検索キーワード"
-          autocomplete="off">
-        <button class="search__button" type="submit" aria-label="検索">検索</button>
+        <!-- 入力欄と検索ボタンは本棚ページと同じ .search__field でまとめ、隙間なく接続し
+             高さを揃える（.search 直下だと gap と align-items:center でボタンが離れ・縮む）。 -->
+        <div class="search__field">
+          <input
+            class="search__input"
+            id="start-search-input"
+            type="search"
+            name="q"
+            placeholder="キーワードから探す（例: 漱石 小説）"
+            aria-label="検索キーワード"
+            autocomplete="off">
+          <button class="search__button" type="submit" aria-label="検索">検索</button>
+        </div>
       </form>
       <p class="start__note" id="start-search-note">
         収録データ（<a href="https://ci.nii.ac.jp/books/" target="_blank" rel="noopener">CiNii Books</a> のスナップショット）から NDC 類（1桁）内を検索します。サーバー稼働時は CiNii API 検索も選べます。

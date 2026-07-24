@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>shelf_blowser — 日本近代文学の本棚</title>
   <meta name="description" content="CiNii Books の書誌データを本棚のように並べてブラウジングする学術検索支援アプリ（試作版：日本近代文学）">
-  <link rel="stylesheet" href="css/styles.css?v=20260723a">
+  <link rel="stylesheet" href="css/styles.css?v=20260724a">
 </head>
 <body>
   <!-- ページ最上部のヘッダ（タイトル/説明）。スクロールには追随せず流れて消える。 -->
@@ -52,22 +52,10 @@
           <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
         </label>
       </div>
-      <!-- 検索窓。収録データ検索モード（既定）では data/search のコーパスから NDC 類（1桁）
-           内を検索し、API 検索モードでは server/app.py を叩く。空送信で棚（分類全体/既定）へ戻る。
-           検索ボタンの並びに CiNii API 検索トグルと類セレクタを置く。 -->
+      <!-- 検索窓・CiNii API トグル・類セレクタ・検索ボタンを一続きの1ブロックにまとめる。
+           収録データ検索モード（既定）では data/search のコーパスから NDC 類（1桁）内を検索し、
+           API 検索モードでは server/app.py を叩く。空送信で棚（分類全体/既定）へ戻る。 -->
       <form class="search" id="search-form" role="search" aria-label="書誌検索">
-        <!-- 検索オプション（検索窓の左）。CiNii API 検索のオン/オフと収録データ検索の対象類。 -->
-        <div class="search__opts">
-          <!-- CiNii API 検索トグル。ON=API 検索／OFF=収録データ検索（既定）。
-               サーバ未稼働時はグレーアウトし、押下でアラートを出す（JS 制御）。 -->
-          <button class="api-toggle" id="api-toggle" type="button" role="switch" aria-checked="false"
-                  aria-label="CiNii API を検索">
-            <span class="api-toggle__label">CiNii APIを検索</span>
-            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-          </button>
-          <!-- 収録データ検索の対象類（0〜9）。API 検索オン時はグレーアウトする（JS 制御）。 -->
-          <select class="sort__select search-class" id="search-class" aria-label="検索する NDC 類"></select>
-        </div>
         <div class="search__field">
           <input
             class="search__input"
@@ -76,6 +64,15 @@
             placeholder="キーワードで検索（例: 漱石 小説）"
             aria-label="検索キーワード"
             autocomplete="off">
+          <!-- CiNii API 検索トグル。ON=API 検索／OFF=収録データ検索（既定）。検索窓と検索ボタンの
+               間に置く。サーバ未稼働時はグレーアウトし、押下で吹き出し（.api-tip）を出す（JS 制御）。 -->
+          <button class="api-toggle" id="api-toggle" type="button" role="switch" aria-checked="false"
+                  aria-label="CiNii API を検索">
+            <span class="api-toggle__label">CiNii API</span>
+            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+          </button>
+          <!-- 収録データ検索の対象類（0〜9）。API 検索オン時はグレーアウトする（JS 制御）。 -->
+          <select class="sort__select search-class" id="search-class" aria-label="検索する NDC 類"></select>
           <button class="search__button" type="submit" aria-label="検索">検索</button>
         </div>
       </form>
@@ -154,6 +151,6 @@
   </footer>
 
   <script src="js/search.js?v=20260722a" defer></script>
-  <script src="js/app.js?v=20260723a" defer></script>
+  <script src="js/app.js?v=20260724a" defer></script>
 </body>
 </html>

@@ -256,54 +256,86 @@ body.about-overlay-open .site-header {
 .sort__select:hover { background-color: var(--surface-2); }
 .sort__select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* ===== 検索オプション（CiNii API 検索トグル＋対象類セレクタ） ===== */
-/* 検索窓の左（＝検索ボタンの並び）に置く。 */
-.search__opts {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex: 0 0 auto;
-}
-/* CiNii API 検索トグル。ラベル＋トグルスイッチのピル型ボタン。
-   ON=API 検索／OFF=収録データ検索。サーバ未稼働時はグレーアウト。 */
+/* ===== 検索ブロック内オプション（CiNii API 検索トグル＋対象類セレクタ） ===== */
+/* 検索窓と「検索」ボタンの間に置き、入力欄・API トグル・類・検索ボタンで一続きの
+   1ブロックを作る（.search__field が align-items:stretch で高さを揃える）。
+   中間セグメントは角丸を付けず、左境界線だけで隣と仕切る（右境界線は隣が持つ）。 */
 .api-toggle {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  padding: 0.32rem 0.7rem;
+  flex: 0 0 auto;
+  padding: 0 0.7rem;
   font-size: 0.8rem;
   line-height: 1.2;
   font-weight: 700;
   color: var(--muted);
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-right: none;
   cursor: pointer;
   white-space: nowrap;
   transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
 }
 .api-toggle__label { pointer-events: none; }
 .api-toggle:hover { background: var(--surface-2); }
-.api-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.api-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* ON（API 検索）= 文字を水色にして選択状態を強調（トグルのつまみも右へ寄る）。 */
 .api-toggle.is-on {
   color: var(--sky-deep);
-  border-color: var(--sky-soft);
 }
 .api-toggle.is-on .switch__track {
   background: var(--sky-deep);
   border-color: var(--sky-deep);
 }
 .api-toggle.is-on .switch__thumb { transform: translateX(1.1rem); }
-/* サーバ未稼働時はグレーアウト（disabled にはせず、押下で JS がアラートを出す）。 */
+/* サーバ未稼働時はグレーアウト（disabled にはせず、押下で JS が吹き出しを出す）。 */
 .api-toggle.is-disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-/* 検索対象類セレクタ。API 検索オン時は無効化してグレーアウトする。 */
+/* 検索対象類セレクタ。ブロックの中間セグメント（角丸なし・左境界線で仕切る）。
+   API 検索オン時は無効化してグレーアウトする。 */
+.search-class {
+  flex: 0 0 auto;
+  border-radius: 0;
+  border-right: none;
+}
 .search-class:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* CiNii API トグルの吹き出し（サーバ未稼働時の注意）。ポップアップ（alert）ではなく
+   ボタン下に固定配置し、上向きの三角でボタンを指す。数秒で自動的に消える（JS 制御）。 */
+.api-tip {
+  position: fixed;
+  z-index: 60;
+  max-width: min(20rem, calc(100vw - 1rem));
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  font-weight: 700;
+  color: #fff;
+  background: var(--text);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(22, 50, 63, 0.28);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+.api-tip[hidden] { display: none; }
+.api-tip.is-on { opacity: 1; transform: translateY(0); }
+/* 吹き出しの先端（上向き三角）。--api-tip-arrow でボタン中央へ合わせる。 */
+.api-tip::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: var(--api-tip-arrow, 50%);
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: var(--text);
 }
 
 /* ===== シリーズまとめ解除スイッチ ===== */
@@ -440,9 +472,21 @@ body.about-overlay-open .site-header {
   max-width: none;
   flex-wrap: wrap;
 }
-/* 上段は検索窓を全幅、その下に検索オプション（API トグル・類）を折り返す。 */
-.searchbar--compact .search__field { flex-basis: 100%; }
-.searchbar--compact .search__opts { flex-basis: 100%; }
+/* コンパクト時はブロックを全幅にし、検索窓（1段目）／API トグル・類・検索ボタン
+   （2段目）へ折り返す。各段の両端に角丸を戻し、段ごとに独立したブロックに見せる。 */
+.searchbar--compact .search__field {
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
+}
+.searchbar--compact .search__input {
+  flex-basis: 100%;
+  border-right: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.searchbar--compact .api-toggle {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
 .searchbar--compact .tabs {
   order: 1;
   /* flex-basis を 0 にして折り返し判定上のタブ幅を 0 扱いにし、並べ替えと必ず
