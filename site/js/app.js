@@ -760,6 +760,31 @@ function hideRelPop() {
 
 /* ---------- 詳細オーバーレイ ---------- */
 
+/* ISBN を 13 桁（ISBN-13 / EAN）へ正規化する。版元ドットコムの書誌 URL
+ * （https://www.hanmoto.com/bd/isbn/<13桁>）向け。10 桁 ISBN は 978 を前置して
+ * チェックディジットを付け替える。13 桁はそのまま。それ以外の桁数は数字部のみ返す
+ * （不明形式のフォールバック）。ハイフンや末尾 X は許容して除去/保持する。 */
+function isbn13(raw) {
+  if (!raw) return '';
+  const s = String(raw).replace(/[^0-9Xx]/g, '').toUpperCase();
+  if (s.length === 13) return s;
+  if (s.length === 10) {
+    const core = '978' + s.slice(0, 9);
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += (i % 2 === 0 ? 1 : 3) * Number(core[i]);
+    const check = (10 - (sum % 10)) % 10;
+    return core + check;
+  }
+  return s.replace(/[^0-9]/g, '');
+}
+
+/* 版元ドットコムの書誌ページ URL（ISBN が無ければ空文字）。 */
+function hanmotoUrl(book) {
+  const raw = book.isbn && book.isbn.length ? book.isbn[0] : '';
+  const code = isbn13(raw);
+  return code ? `https://www.hanmoto.com/bd/isbn/${code}` : '';
+}
+
 function overlayHtml(item) {
   const isSeries = item.type === 'series';
   const book = isSeries ? item.rep : item.book;
@@ -775,13 +800,8 @@ function overlayHtml(item) {
 
   let seriesBlock = '';
   if (isSeries) {
-    const list = item.books
-      .map(b => `<li>${escapeHtml(b.title)}（所蔵 ${b.ownerCount}）</li>`)
-      .join('');
-    seriesBlock = `
-      <div class="ov__badge">シリーズ：${escapeHtml(seriesName(item.rep))}（${item.books.length}冊）</div>
-      <p class="ov__note">所蔵館数が最も多い1冊を代表表示しています。</p>
-      <ul class="ov__series-list">${list}</ul>`;
+    // シリーズ書はシリーズ名・説明文・収録巻リストを詳細本文には出さず、
+    // 関連書エリアの「同じシリーズ：（シリーズ名）」行（fillRelated）へ集約する。
   } else if (item.volumes >= MULTI_VOLUME_MIN) {
     seriesBlock = `<div class="ov__badge">多巻もの：全${item.volumes}冊</div>`;
   } else if (book.series && book.series.length) {
@@ -790,6 +810,12 @@ function overlayHtml(item) {
 
   const coverCol = book.coverUrl
     ? `<div class="ov__cover-col"><img class="ov__cover" src="${escapeHtml(book.coverUrl)}" alt="${escapeHtml(book.title)} の表紙"></div>`
+    : '';
+
+  // 版元ドットコムの書誌ページへのリンク（ISBN があるときのみ）。CiNii ボタンの下へ置く。
+  const hanmoto = hanmotoUrl(book);
+  const hanmotoLink = hanmoto
+    ? `<a class="ov__link" href="${escapeHtml(hanmoto)}" target="_blank" rel="noopener">版元ドットコムで見る →</a>`
     : '';
 
   // タイトル・著者・バッジを上段（全幅）に置き、その下を横並びカラムにする。
@@ -809,6 +835,7 @@ function overlayHtml(item) {
       </div>
       <div class="ov__actions">
         <a class="ov__link" href="${escapeHtml(book.ciniiUrl)}" target="_blank" rel="noopener">CiNii で見る →</a>
+        ${hanmotoLink}
         <!-- NDC 棚への逆引きリンク（見出し＋1/2/3 桁を縦に並べる）。書誌の NDC が
              引けたときだけ fillRelated が中身を描画して表示する（R4）。 -->
         <div class="ov__ndc" id="ov-ndc-links" hidden></div>
@@ -900,8 +927,9 @@ function sharesValue(values, set) {
   return !!values && values.some((v) => set.has(v));
 }
 
-// 表示中の関連書（クリック時に data-rel="種別:添字" から引く）。
-let ovRelated = { author: [], publisher: [], ndc: [] };
+// 表示中の関連書（クリック時に data-rel="種別:添字" から引く）。種別キーは行ごとに
+// 動的（series / author0.. / publisher / ndc）で、fillRelated が組み替える。
+let ovRelated = {};
 
 // オーバーレイ内履歴。stack = 表示してきたアイテム列、pos = 現在位置。
 let ovHistory = { stack: [], pos: -1 };
@@ -930,19 +958,44 @@ function relatedRowHtml(kind, heading, books) {
     </section>`;
 }
 
-/* 関連書 3 行を非同期に組み立てて #ov-related へ差し込む。seq が古くなっていたら
- * （別の書誌へ遷移済み・オーバーレイを閉じた）結果を捨てる。 */
+/* 表示中書誌と同じシリーズ親を持つ巻を、現在棚のデータセット（currentBooks）から
+ * 集める。上限なし・書架の収録分まで（データ契約の ownerCount 降順をそのまま保つ）。
+ * 表示中書誌自身は除く。シリーズ親が無い書誌では空配列。 */
+function seriesSiblings(book, parentId) {
+  if (!parentId) return [];
+  return currentBooks.filter((c) =>
+    c.ncid !== book.ncid
+    && c.series && c.series[0] && c.series[0].id === parentId);
+}
+
+/* 関連書を非同期に組み立てて #ov-related へ差し込む。行は上から
+ *   同じシリーズ（1 行・上限なし）／同じ著者（著者ごとに 1 行）／同じ出版社／同じ分類。
+ * seq が古くなっていたら（別の書誌へ遷移済み・オーバーレイを閉じた）結果を捨てる。
+ * クリック時の逆引きのため、各行の書誌配列を種別キー（series / author0.. /
+ * publisher / ndc）で ovRelated に格納する。 */
 async function fillRelated(item, seq) {
   const book = item.type === 'series' ? item.rep : item.book;
-  // シリーズ束は全巻を除外（束の代表として表示しているため）。
+  // シリーズ束は全巻を、同じシリーズ行へ回すため著者/出版社/分類の候補から除外する。
   const exclude = new Set();
   if (item.type === 'series') for (const b of item.books) exclude.add(b.ncid);
 
-  const creatorSet = new Set(book.creators || []);
+  // 同じシリーズ：束（type:series）は親 ID、単独書誌はレコードの series[0].id で兄弟巻を集める。
+  const seriesParentId = item.type === 'series'
+    ? item.parentId
+    : (book.series && book.series[0] && book.series[0].id) || '';
+  const seriesTitle = item.type === 'series' ? seriesName(item.rep) : seriesName(book);
+  const seriesBooks = seriesSiblings(book, seriesParentId);
+
+  // 同じ著者：著者ごとに 1 行。各行はその著者名を含む書誌だけを母集合にする
+  // （例: a・b の共著書を開いても、a・c の共著書が b の行へ混ざらない）。
+  const authorRows = (book.creators || [])
+    .map((name) => ({
+      name,
+      books: pickRelated(book, currentBooks, exclude, (c) => (c.creators || []).includes(name)),
+    }))
+    .filter((r) => r.books.length);
+
   const publisherSet = new Set(book.publishers || []);
-  const author = creatorSet.size
-    ? pickRelated(book, currentBooks, exclude, (c) => sharesValue(c.creators, creatorSet))
-    : [];
   const publisher = publisherSet.size
     ? pickRelated(book, currentBooks, exclude, (c) => sharesValue(c.publishers, publisherSet))
     : [];
@@ -966,16 +1019,25 @@ async function fillRelated(item, seq) {
   }
 
   if (seq !== ovSeq) return; // 既に別の書誌へ遷移済み
-  ovRelated = { author, publisher, ndc };
   renderNdcLinks(code, index);
   const target = document.getElementById('ov-related');
   if (!target) return;
-  // 各見出しの後に "：" と対象の名前（著者名／出版社名／分類名）を添える。
-  // 名前が空の行は関連書自体が 0 件で描画されないため、常に名前付きで組み立てる。
-  target.innerHTML =
-    relatedRowHtml('author', `同じ著者：${escapeHtml(authorName(book))}`, author) +
-    relatedRowHtml('publisher', `同じ出版社：${escapeHtml(publisherText(book))}`, publisher) +
-    relatedRowHtml('ndc', ndcHeading, ndc);
+
+  // 各行を種別キーつきで組み立て、ovRelated へ登録（クリック時の逆引き用）。
+  // 順序は「同じシリーズ」を先頭に、以降 著者（複数可）→出版社→分類。
+  ovRelated = {};
+  const rows = [];
+  const addRow = (kind, heading, books) => {
+    if (!books.length) return;
+    ovRelated[kind] = books;
+    rows.push(relatedRowHtml(kind, heading, books));
+  };
+  addRow('series', `同じシリーズ：${escapeHtml(seriesTitle)}`, seriesBooks);
+  authorRows.forEach((r, i) => addRow(`author${i}`, `同じ著者：${escapeHtml(r.name)}`, r.books));
+  addRow('publisher', `同じ出版社：${escapeHtml(publisherText(book))}`, publisher);
+  addRow('ndc', ndcHeading, ndc);
+
+  target.innerHTML = rows.join('');
   target.setAttribute('aria-busy', 'false');
 }
 
@@ -987,11 +1049,14 @@ function ndcLabelFor(index, code) {
 }
 
 /* NDC 棚への逆引きリンク 1 個（R4）。背景の棚（currentNdc）と一致する記号は
- * リンクにせずグレーアウトする。リンクは通常のページ遷移（棚ごと切り替え）。 */
+ * リンクにせずグレーアウトする。リンクは通常のページ遷移（棚ごと切り替え）。
+ * ただし検索クエリ（currentQuery）が入っているときは、表示中の棚は分類全体ではなく
+ * 検索で絞り込んだ一部（例: NDC9 内「漱石」検索）なので、記号が一致してもグレーアウト
+ * せず分類全体の棚へ遷移できるようにする。 */
 function ndcLinkHtml(code, index) {
   const label = ndcLabelFor(index, code);
   const text = escapeHtml(code) + (label ? ` ${escapeHtml(label)}` : '');
-  if (code === currentNdc) {
+  if (code === currentNdc && !currentQuery) {
     return `<span class="ov__ndc-btn ov__ndc-btn--current" aria-disabled="true"
                   title="表示中の棚">${text}</span>`;
   }
@@ -1022,7 +1087,7 @@ function renderOverlayView() {
   const item = ovHistory.stack[ovHistory.pos];
   const seq = ++ovSeq;
   hideRelPop(); // 遷移で古いタイルが消えるため関連書ポップアップを閉じる
-  ovRelated = { author: [], publisher: [], ndc: [] };
+  ovRelated = {}; // 前の書誌の関連書をクリア（fillRelated が種別キーで組み直す）
   els.overlayBody.innerHTML = overlayHtml(item)
     + '<div class="ov__related" id="ov-related" aria-busy="true"></div>';
   updateOverlayNav();
