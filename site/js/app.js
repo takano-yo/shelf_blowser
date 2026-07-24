@@ -52,10 +52,8 @@ const els = {
   searchbarInner: document.querySelector('.searchbar__inner'),
   searchForm: document.getElementById('search-form'),
   searchInput: document.getElementById('search-input'),
-  searchMode: document.getElementById('search-mode'),
+  apiToggle: document.getElementById('api-toggle'),
   searchClass: document.getElementById('search-class'),
-  classField: document.getElementById('search-class-field'),
-  modeNote: document.getElementById('search-mode-note'),
   tabs: document.getElementById('tabs'),
   sort: document.querySelector('.sort'),
   sortSelect: document.getElementById('sort-select'),
@@ -1409,10 +1407,15 @@ function bindEvents() {
     runSearch(els.searchInput ? els.searchInput.value.trim() : '');
   });
 
-  // 検索モード切替（収録データ検索 / CiNii API 検索）。類セレクタの表示を切り替える。
-  if (els.searchMode) {
-    els.searchMode.addEventListener('change', () => {
-      currentMode = els.searchMode.value;
+  // 検索モード切替（CiNii API 検索トグル）。ON=API 検索／OFF=収録データ検索。
+  // サーバ未稼働時は無効（グレーアウト）。押下でアラートを出し、モードは変えない。
+  if (els.apiToggle) {
+    els.apiToggle.addEventListener('click', () => {
+      if (!serverUp) {
+        window.alert('検索サーバー未稼働のため、CiNii API検索は使用できません');
+        return;
+      }
+      currentMode = els.apiToggle.getAttribute('aria-checked') === 'true' ? 'data' : 'api';
       syncModeUi();
     });
   }
@@ -1651,7 +1654,6 @@ async function applyUrlState(isInitial) {
       currentQuery = st.q;
       currentMode = st.mode;
       // 検索窓のモード/類セレクタを URL の状態へ合わせる。
-      if (els.searchMode) els.searchMode.value = st.mode;
       if (els.searchClass && st.ndc) els.searchClass.value = st.ndc[0];
       syncModeUi();
       if (st.ndc) {
@@ -1839,9 +1841,11 @@ function restoreNdcShelf() {
   setBooks(ndcBooks, `ndc:${currentNdc}`);
 }
 
-/* いま選ばれている検索モード（セレクタが無い環境では現在値）。 */
+/* いま選ばれている検索モード（トグルが無い環境では現在値）。
+ * API トグルが ON かつサーバ稼働時のみ 'api'、それ以外は 'data'。 */
 function selectedMode() {
-  return els.searchMode ? els.searchMode.value : currentMode;
+  if (els.apiToggle && serverUp && els.apiToggle.getAttribute('aria-checked') === 'true') return 'api';
+  return 'data';
 }
 
 /* 収録データ検索の対象類（1 桁）。NDC 棚表示中は棚の類、そうでなければ類セレクタの値。 */
@@ -1924,31 +1928,20 @@ function populateClassSelect(index) {
   if (currentNdc) els.searchClass.value = currentNdc[0];
 }
 
-/* モード切替に応じて類セレクタの表示可否・サーバ未稼働時のグレーアウトを更新する。 */
+/* モード（API トグル）に応じて類セレクタのグレーアウト・サーバ未稼働時の
+ * トグル無効化を更新する。currentMode も現在のトグル状態へ合わせる。 */
 function syncModeUi() {
-  const mode = selectedMode();
-  // 類セレクタは収録データ検索のときだけ表示する。
-  if (els.classField) els.classField.hidden = mode !== 'data';
-  // API 検索の選択肢はサーバ稼働時のみ有効。未稼働ならグレーアウト＋理由表示。
-  if (els.searchMode) {
-    const apiOpt = els.searchMode.querySelector('option[value="api"]');
-    if (apiOpt) apiOpt.disabled = !serverUp;
-    if (!serverUp && els.searchMode.value === 'api') {
-      // 未稼働で api が選べない状態。既定の収録データ検索へ寄せる。
-      els.searchMode.value = 'data';
-      currentMode = 'data';
-      if (els.classField) els.classField.hidden = false;
-    }
+  // サーバ未稼働なら API 検索は不可。トグルを OFF 固定＋無効（グレーアウト）にする。
+  if (!serverUp && currentMode === 'api') currentMode = 'data';
+  const apiOn = serverUp && currentMode === 'api';
+  if (els.apiToggle) {
+    els.apiToggle.setAttribute('aria-checked', apiOn ? 'true' : 'false');
+    els.apiToggle.classList.toggle('is-on', apiOn);
+    // サーバ未稼働はグレーアウト（クリックは JS 側でアラート、disabled にはしない）。
+    els.apiToggle.classList.toggle('is-disabled', !serverUp);
   }
-  if (els.modeNote) {
-    if (!serverUp) {
-      els.modeNote.innerHTML = '検索サーバー未稼働のため <strong>CiNii API 検索</strong> は使用できません（収録データ検索をご利用ください）。';
-      els.modeNote.hidden = false;
-    } else {
-      els.modeNote.hidden = true;
-      els.modeNote.innerHTML = '';
-    }
-  }
+  // 類セレクタは収録データ検索用。API 検索オン時はグレーアウト（無効化）する。
+  if (els.searchClass) els.searchClass.disabled = apiOn;
 }
 
 async function init() {

@@ -33,17 +33,7 @@
         <button class="tab" type="button" role="tab" data-tab="editorial" aria-selected="false">編集書</button>
         <button class="tab" type="button" role="tab" data-tab="series" aria-selected="false">シリーズ</button>
       </div>
-      <!-- シリーズまとめ解除スイッチ。シリーズタブのときだけ表示（JS で hidden を制御）。
-           ON=シリーズでまとめる（既定）／OFF=各巻に分けて所蔵館数順に並べる。 -->
-      <div class="series-toggle" id="series-toggle" hidden>
-        <span class="series-toggle__text">シリーズでまとめる</span>
-        <label class="switch" title="オフにするとシリーズを各巻に分けて表示します">
-          <input class="switch__input" type="checkbox" id="series-group-toggle" checked
-                 aria-label="シリーズでまとめる">
-          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-        </label>
-      </div>
-      <!-- 並べ替え（プルダウン）。表示中タブの並び順を切り替える。 -->
+      <!-- 並べ替え（プルダウン）。タブのすぐ右に置き、表示中タブの並び順を切り替える。 -->
       <div class="sort">
         <label class="sort__label" for="sort-select">並べ替え</label>
         <select class="sort__select" id="sort-select" aria-label="本棚の並べ替え">
@@ -52,36 +42,43 @@
           <option value="year-desc">出版年：新しい順</option>
         </select>
       </div>
-      <!-- 検索モード切替。収録データ検索（コーパス・サーバ不要・既定）と
-           CiNii API 検索（server/app.py・稼働時のみ）を切り替える。収録データ検索の
-           ときは類セレクタ（0〜9）を表示する。サーバ未稼働時は API 検索を不可にする。 -->
-      <div class="search-mode" id="search-mode-group">
-        <label class="search-mode__field">
-          <span class="search-mode__label">検索</span>
-          <select class="sort__select search-mode__select" id="search-mode" aria-label="検索モード">
-            <option value="data">収録データ検索</option>
-            <option value="api">CiNii API 検索</option>
-          </select>
-        </label>
-        <label class="search-mode__field" id="search-class-field">
-          <span class="search-mode__label">類</span>
-          <select class="sort__select search-mode__select" id="search-class" aria-label="検索する NDC 類"></select>
+      <!-- シリーズまとめ解除スイッチ。シリーズタブのときだけ表示（JS で hidden を制御）。
+           並べ替えの右＝タブのすぐ右隣に置く。ON=シリーズでまとめる（既定）／OFF=各巻に分ける。 -->
+      <div class="series-toggle" id="series-toggle" hidden>
+        <span class="series-toggle__text">シリーズでまとめる</span>
+        <label class="switch" title="オフにするとシリーズを各巻に分けて表示します">
+          <input class="switch__input" type="checkbox" id="series-group-toggle" checked
+                 aria-label="シリーズでまとめる">
+          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
         </label>
       </div>
-      <!-- 検索窓。収録データ検索モードでは data/search のコーパスから NDC 類（1桁）内を
-           検索し、API 検索モードでは server/app.py を叩く。空送信で棚（分類全体/既定）へ戻る。 -->
+      <!-- 検索窓。収録データ検索モード（既定）では data/search のコーパスから NDC 類（1桁）
+           内を検索し、API 検索モードでは server/app.py を叩く。空送信で棚（分類全体/既定）へ戻る。
+           検索ボタンの並びに CiNii API 検索トグルと類セレクタを置く。 -->
       <form class="search" id="search-form" role="search" aria-label="書誌検索">
-        <input
-          class="search__input"
-          id="search-input"
-          type="search"
-          placeholder="キーワードで検索（例: 漱石 小説）"
-          aria-label="検索キーワード"
-          autocomplete="off">
-        <button class="search__button" type="submit" aria-label="検索">検索</button>
+        <!-- 検索オプション（検索窓の左）。CiNii API 検索のオン/オフと収録データ検索の対象類。 -->
+        <div class="search__opts">
+          <!-- CiNii API 検索トグル。ON=API 検索／OFF=収録データ検索（既定）。
+               サーバ未稼働時はグレーアウトし、押下でアラートを出す（JS 制御）。 -->
+          <button class="api-toggle" id="api-toggle" type="button" role="switch" aria-checked="false"
+                  aria-label="CiNii API を検索">
+            <span class="api-toggle__label">CiNii APIを検索</span>
+            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+          </button>
+          <!-- 収録データ検索の対象類（0〜9）。API 検索オン時はグレーアウトする（JS 制御）。 -->
+          <select class="sort__select search-class" id="search-class" aria-label="検索する NDC 類"></select>
+        </div>
+        <div class="search__field">
+          <input
+            class="search__input"
+            id="search-input"
+            type="search"
+            placeholder="キーワードで検索（例: 漱石 小説）"
+            aria-label="検索キーワード"
+            autocomplete="off">
+          <button class="search__button" type="submit" aria-label="検索">検索</button>
+        </div>
       </form>
-      <!-- 検索モードの補足（サーバ未稼働で API 検索が使えない理由など）。 -->
-      <p class="search-mode__note" id="search-mode-note" hidden></p>
     </div>
   </div>
 

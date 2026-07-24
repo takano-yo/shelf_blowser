@@ -137,7 +137,8 @@ body.about-overlay-open .site-header {
   /* 棚板の純白(#fff)と背景のオフホワイト(#eef2f6)の中間（棚板よりは暗い）。 */
   background: rgba(246, 248, 250, 0.95);
   backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--line);
+  /* 選択中タブを本棚エリアと地続きに見せるため、検索バー下端の境界線は引かない
+     （タブ側のアール＝枠線でタブと本棚のつながりを表現する）。 */
 }
 .searchbar__inner {
   max-width: 88rem;
@@ -184,30 +185,35 @@ body.about-overlay-open .site-header {
 .tab.is-active {
   color: var(--sky-deep);
   background: var(--bg);
+  /* 下端は本棚エリア（var(--bg)）と同色で開けて地続きにする。 */
   border-color: var(--line) var(--line) var(--bg) var(--line);
   box-shadow: inset 0 2px 0 var(--sky-deep);
   z-index: 1;
 }
 /* 選択中タブの下端左右を、垂直な角ではなく円弧で外側へ広げ、本棚エリアと
-   地続きに見せる（タブ側面から水平線へアールでつながる「ノッチ」）。 */
+   地続きに見せる（タブ側面から本棚の面へアールでつながる「足」）。
+   radial-gradient で描くため下端（ベースライン）より下へはみ出さず、
+   タブ切替時に本棚エリアの手前へ描画されない。円弧にもタブ本体と同じ
+   枠線（var(--line)）を付ける。 */
 .tab.is-active::before,
 .tab.is-active::after {
   content: "";
   position: absolute;
-  bottom: 0;
-  width: 10px;
-  height: 10px;
+  bottom: -1px; /* タブ下端を本棚エリアへ 1px 重ね、境目を消す */
+  width: 8px;
+  height: 8px;
   pointer-events: none;
 }
 .tab.is-active::before {
-  left: -10px;
-  border-radius: 0 0 10px 0;
-  box-shadow: 5px 5px 0 5px var(--bg);
+  left: -8px;
+  /* 左上を中心にした円弧。外側（左上）は透明、円弧に枠線、内側（タブ側）は本棚色。 */
+  background: radial-gradient(circle 8px at top left,
+    transparent 0 6.9px, var(--line) 6.9px 7.9px, var(--bg) 7.9px);
 }
 .tab.is-active::after {
-  right: -10px;
-  border-radius: 0 0 0 10px;
-  box-shadow: -5px 5px 0 5px var(--bg);
+  right: -8px;
+  background: radial-gradient(circle 8px at top right,
+    transparent 0 6.9px, var(--line) 6.9px 7.9px, var(--bg) 7.9px);
 }
 
 /* ===== 並べ替え（プルダウン） ===== */
@@ -217,7 +223,7 @@ body.about-overlay-open .site-header {
   align-items: center;
   gap: 0.4rem;
   flex: 0 0 auto;
-  order: 2;
+  order: 1; /* タブ(0)のすぐ右隣に置く */
 }
 .sort__label {
   font-size: 0.8rem;
@@ -250,40 +256,55 @@ body.about-overlay-open .site-header {
 .sort__select:hover { background-color: var(--surface-2); }
 .sort__select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* ===== 検索モード切替（収録データ検索 / CiNii API 検索）＋類セレクタ ===== */
-.search-mode {
+/* ===== 検索オプション（CiNii API 検索トグル＋対象類セレクタ） ===== */
+/* 検索窓の左（＝検索ボタンの並び）に置く。 */
+.search__opts {
   display: flex;
   align-items: center;
-  gap: 0.4rem 0.6rem;
+  gap: 0.5rem;
   flex: 0 0 auto;
-  order: 3; /* 並べ替え(2)の右、検索窓の左に置く */
-  flex-wrap: wrap;
 }
-.search-mode__field {
-  display: flex;
+/* CiNii API 検索トグル。ラベル＋トグルスイッチのピル型ボタン。
+   ON=API 検索／OFF=収録データ検索。サーバ未稼働時はグレーアウト。 */
+.api-toggle {
+  display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-}
-.search-mode__field[hidden] { display: none; }
-.search-mode__label {
+  gap: 0.45rem;
+  padding: 0.32rem 0.7rem;
   font-size: 0.8rem;
   line-height: 1.2;
   font-weight: 700;
   color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
   white-space: nowrap;
+  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
 }
-/* 選択不可（サーバ未稼働時の API 検索など）は淡色＋カーソル不可にする。 */
-.search-mode__select option:disabled { color: var(--muted); }
-.search-mode__select:disabled { opacity: 0.6; cursor: not-allowed; }
-/* サーバ未稼働などの補足。表示時は 1 行占有（検索バー内で改行）して読みやすくする。 */
-.search-mode__note {
-  flex-basis: 100%;
-  margin: 0;
-  font-size: 0.78rem;
-  line-height: 1.3;
-  color: var(--muted);
+.api-toggle__label { pointer-events: none; }
+.api-toggle:hover { background: var(--surface-2); }
+.api-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ON（API 検索）= 文字を水色にして選択状態を強調（トグルのつまみも右へ寄る）。 */
+.api-toggle.is-on {
+  color: var(--sky-deep);
+  border-color: var(--sky-soft);
 }
-.search-mode__note[hidden] { display: none; }
+.api-toggle.is-on .switch__track {
+  background: var(--sky-deep);
+  border-color: var(--sky-deep);
+}
+.api-toggle.is-on .switch__thumb { transform: translateX(1.1rem); }
+/* サーバ未稼働時はグレーアウト（disabled にはせず、押下で JS がアラートを出す）。 */
+.api-toggle.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 検索対象類セレクタ。API 検索オン時は無効化してグレーアウトする。 */
+.search-class:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* ===== シリーズまとめ解除スイッチ ===== */
 /* シリーズタブのときだけ表示。ON=まとめる（既定）／OFF=各巻に分ける。
@@ -293,8 +314,8 @@ body.about-overlay-open .site-header {
   align-items: center;
   gap: 0.45rem;
   flex: 0 0 auto;
-  /* PC表示では並べ替えボタンのすぐ左に置く（検索窓は右端に固定）。 */
-  order: 1;
+  /* タブ(0)・並べ替え(1)のすぐ右隣に置く（検索窓は右端に固定）。 */
+  order: 2;
 }
 .series-toggle[hidden] { display: none; }
 .series-toggle__text {
@@ -350,15 +371,23 @@ body.about-overlay-open .site-header {
   outline-offset: 2px;
 }
 
-/* 検索窓（ダミー）。タブの右へ寄せる。 */
+/* 検索エリア。右端へ寄せ、左に検索オプション（API トグル・類）、右に検索窓を並べる。 */
 .search {
   display: flex;
-  align-items: stretch;
-  flex: 1 1 18rem;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1 1 24rem;
   min-width: 0;
-  max-width: 30rem;
+  max-width: 40rem;
   margin-left: auto;
   order: 3;
+}
+/* 入力欄＋検索ボタン。 */
+.search__field {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 16rem;
+  min-width: 0;
 }
 
 .search__input {
@@ -409,7 +438,11 @@ body.about-overlay-open .site-header {
   flex-basis: 100%;
   margin-left: 0;
   max-width: none;
+  flex-wrap: wrap;
 }
+/* 上段は検索窓を全幅、その下に検索オプション（API トグル・類）を折り返す。 */
+.searchbar--compact .search__field { flex-basis: 100%; }
+.searchbar--compact .search__opts { flex-basis: 100%; }
 .searchbar--compact .tabs {
   order: 1;
   /* flex-basis を 0 にして折り返し判定上のタブ幅を 0 扱いにし、並べ替えと必ず
