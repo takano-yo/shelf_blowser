@@ -756,6 +756,44 @@ function hideRelPop() {
   ovRelPop.classList.remove('is-on');
 }
 
+/* ---------- CiNii API トグルの吹き出し（サーバ未稼働時の注意） ----------
+ * ポップアップ（window.alert）ではなく、トグルボタン下に固定配置の吹き出し（.api-tip）
+ * を出す。body 直下に一度だけ作り、ボタンの実位置に合わせて配置し、数秒で自動的に消す。 */
+const apiTip = document.createElement('div');
+apiTip.className = 'api-tip';
+apiTip.setAttribute('role', 'status');
+apiTip.hidden = true;
+document.body.appendChild(apiTip);
+let apiTipTimer = 0;
+
+function showApiTip(message) {
+  if (!els.apiToggle) return;
+  apiTip.textContent = message;
+  apiTip.hidden = false;
+  // 実寸を確定してからボタンの下・中央へ配置する（画面端は内側へ寄せる）。
+  const r = els.apiToggle.getBoundingClientRect();
+  const gap = 8;
+  const tw = apiTip.offsetWidth;
+  let left = r.left + r.width / 2 - tw / 2;
+  left = Math.max(gap, Math.min(left, window.innerWidth - tw - gap));
+  apiTip.style.left = `${left}px`;
+  apiTip.style.top = `${r.bottom + gap}px`;
+  // 先端（三角）をボタン中央へ合わせる。
+  apiTip.style.setProperty('--api-tip-arrow', `${r.left + r.width / 2 - left}px`);
+  void apiTip.offsetWidth; // 実寸確定後にフェード開始（初回のカクつき防止）
+  apiTip.classList.add('is-on');
+  clearTimeout(apiTipTimer);
+  apiTipTimer = setTimeout(hideApiTip, 3500);
+}
+
+function hideApiTip() {
+  clearTimeout(apiTipTimer);
+  if (apiTip.hidden) return;
+  apiTip.classList.remove('is-on');
+  // トランジション終了後に hidden へ戻す（フェードアウトを見せる）。
+  apiTipTimer = setTimeout(() => { apiTip.hidden = true; }, 200);
+}
+
 /* ---------- 詳細オーバーレイ ---------- */
 
 /* ISBN を 13 桁（ISBN-13 / EAN）へ正規化する。版元ドットコムの書誌 URL
@@ -802,9 +840,10 @@ function overlayHtml(item) {
     // 関連書エリアの「同じシリーズ：（シリーズ名）」行（fillRelated）へ集約する。
   } else if (item.volumes >= MULTI_VOLUME_MIN) {
     seriesBlock = `<div class="ov__badge">多巻もの：全${item.volumes}冊</div>`;
-  } else if (book.series && book.series.length) {
-    seriesBlock = `<div class="ov__badge">${escapeHtml(book.series[0].title)}</div>`;
   }
+  // 単独巻がシリーズに属していても、書誌情報エリアにはシリーズ名を出さない。
+  // 本棚（シリーズ束）から開いたときと表示を揃える（別巻号からの遷移時だけ
+  // 「シリーズ：◯◯」が出ていたのを削除）。同じシリーズの巻は関連書エリアへ集約する。
 
   const coverCol = book.coverUrl
     ? `<div class="ov__cover-col"><img class="ov__cover" src="${escapeHtml(book.coverUrl)}" alt="${escapeHtml(book.title)} の表紙"></div>`
@@ -1408,21 +1447,26 @@ function bindEvents() {
   });
 
   // 検索モード切替（CiNii API 検索トグル）。ON=API 検索／OFF=収録データ検索。
-  // サーバ未稼働時は無効（グレーアウト）。押下でアラートを出し、モードは変えない。
+  // サーバ未稼働時は無効（グレーアウト）。押下で吹き出し（.api-tip）を出し、モードは変えない。
   if (els.apiToggle) {
     els.apiToggle.addEventListener('click', () => {
       if (!serverUp) {
-        window.alert('検索サーバー未稼働のため、CiNii API検索は使用できません');
+        showApiTip('検索サーバー未稼働のため、CiNii API 検索は使用できません');
         return;
       }
+      hideApiTip();
       currentMode = els.apiToggle.getAttribute('aria-checked') === 'true' ? 'data' : 'api';
       syncModeUi();
     });
   }
 
+  // スクロール／リサイズでボタン位置がずれるので、CiNii API トグルの吹き出しは畳む。
+  window.addEventListener('scroll', hideApiTip, { passive: true });
+
   // ウィンドウ幅変化で列数が変わったら棚板を敷き直す（リサイズ確定後にだけ実行）。
   let resizeTimer;
   window.addEventListener('resize', () => {
+    hideApiTip();
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       applyShelfLayout(false);
