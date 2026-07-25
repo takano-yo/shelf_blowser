@@ -1329,7 +1329,8 @@ a.ov__ndc-btn:focus-visible { color: #fff; background: var(--sky-deep); border-c
  * スタートページ（入口）専用テーマ
  * body.start-page 配下だけに適用し、共有の本棚ページ（shelf.html）へは波及させない。
  * 背景ダークグレー／文字・ボタンは白系、アクセントは暗い赤。
- * PC 表示でスクロールなしの 1 画面に収める。
+ * 通常の画面ではスクロールなしの 1 画面に収まる寸法にしてあるが、収まらない画面
+ * （モバイルの横向きなど）で内容が切れてしまわないよう、スクロール自体は常に許可する。
  * ========================================================================= */
 body.start-page {
   --sp-bg: #75716e;          /* 中間グレー（従来のダークグレーより明るく） */
@@ -1343,14 +1344,13 @@ body.start-page {
   --sp-accent: #d24651;      /* 赤（枠線用・明るめ背景でも視認できる濃さ） */
   --sp-accent-deep: #b02a37;
 
+  /* height を固定せず overflow も塞がない。収まる画面ではスクロールバーは出ず、
+   * 収まらない画面（モバイル横向きなど）だけスクロールできる。 */
   min-height: 100vh;
-  height: 100vh;
-  overflow: hidden;          /* 1 画面に収める（スクロールを出さない） */
   background: var(--sp-bg);
   color: var(--sp-text);
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: center;
   padding: 1.5rem 1.25rem;
 }
@@ -1359,21 +1359,27 @@ body.start-page {
 .start-page a:hover,
 .start-page a:focus-visible { color: #e6969e; }
 
+/* 上下中央寄せは justify-content ではなく auto マージンで行う。あふれたときに
+ * justify-content: center だと上端が画面外へ出てスクロールしても戻れなくなるが、
+ * auto マージンなら余白が無くなった時点で 0 に潰れ、先頭から読める。 */
 .start-page .start {
   max-width: 62rem;
   width: 100%;
-  margin: 0;
+  margin: auto 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 1.6rem;
 }
 
-/* キャッチコピー: 中央寄せ・やわらかい丸ゴシックを細字で（手書き味のある印象）。 */
+/* キャッチコピー: 中央寄せ・やわらかい丸ゴシックを細字で（手書き味のある印象）。
+ * 丸ゴシックを載せている OS は限られる（Windows・Android には無い）ので、
+ * M PLUS Rounded 1c の Light を Web フォントで読む。読めなかった場合は
+ * 従来どおり端末の丸ゴシック → 角ゴシックへフォールバックする。 */
 .start__copy {
   margin: 0;
   text-align: center;
-  font-family: "Hiragino Maru Gothic ProN", "Hiragino Maru Gothic Pro", "YuGothic", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+  font-family: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Hiragino Maru Gothic Pro", "YuGothic", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
   font-size: clamp(1.6rem, 3vw, 2.4rem);
   font-weight: 300;
   letter-spacing: 0.12em;
@@ -1517,12 +1523,14 @@ body.start-page {
 .ndc-nav__viewport { position: relative; }
 .ndc-nav__viewport.is-animating { overflow: hidden; }
 
-/* 分類ボタンは 横5×縦2（10 個）で固定配置。 */
+/* 分類ボタンは 横5×縦2（10 個）で固定配置。
+ * 階層切り替えの動きは js/start.js が Web Animations API で付けるため、
+ * ここに transition は置かない（下の prefers-reduced-motion 用の一括指定で
+ * 打ち消されて、切り替えの手応えが消えてしまうのを避ける）。 */
 .start-page .ndc-nav__grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.55rem;
-  transition: transform 0.38s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.38s ease;
 }
 /* アニメ中は 2 枚のグリッドをビューポートいっぱいに重ねる。 */
 .is-animating .ndc-nav__grid {
@@ -1662,29 +1670,20 @@ body.start-page {
   .ndc-nav__source { margin-top: 0.5rem; }
 }
 
-/* さらに短い画面（320×568 など）。ここまで詰めて 1 画面に収める。 */
+/* さらに短い画面（320×568 など）。ここまで詰めて 1 画面に収める。
+ * 以前は body の height: 100vh によって flex が中身を圧縮していたぶん見かけ上収まって
+ * いたが、スクロール許可にあたって高さ固定をやめたので実寸で収める必要がある。 */
 @media (max-width: 600px) and (max-height: 600px) {
-  body.start-page { padding: 0.6rem 0.8rem; }
-  .start-page .start { gap: 0.65rem; }
+  body.start-page { padding: 0.5rem 0.8rem; }
+  .start-page .start { gap: 0.55rem; }
   .start__copy { line-height: 1.25; }
   .start__search-modes { margin-bottom: 0.5rem; }
   .start-page .search__input { padding: 0.45rem 0.8rem; }
   .start-page .start__note { margin-top: 0.3rem; }
   .start-page .ndc-nav__heading { margin-bottom: 0.4rem; }
   .start-page .ndc-nav__controls { margin-bottom: 0.4rem; }
-  .start-page .ndc-nav__grid { gap: 0.35rem; }
-  .start-page .ndc-btn { height: 2.4rem; padding: 0.25rem 0.45rem; }
+  .start-page .ndc-nav__grid { gap: 0.3rem; }
+  .start-page .ndc-btn { height: 2.3rem; padding: 0.25rem 0.45rem; }
   .start-page .ndc-btn__label { line-height: 1.2; }
   .ndc-nav__source { margin-top: 0.4rem; }
-}
-
-/* 極端に低い画面（横向きなど）は 1 画面に収めきれない。内容が切れて操作できなく
- * なるのを避けるため、この場合だけスクロールを許可する。 */
-@media (max-width: 600px) and (max-height: 480px) {
-  body.start-page {
-    height: auto;
-    min-height: 100vh;
-    overflow-y: auto;
-    justify-content: flex-start;
-  }
 }
