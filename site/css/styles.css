@@ -1463,6 +1463,19 @@ body.start-page {
 }
 .start-page .start__note a { text-decoration: underline; }
 
+/* 外部リンク記号（四角＋右上向き矢印）。currentColor で塗るのでリンク色に追従する。 */
+.link-ext::after {
+  content: "";
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-left: 0.25em;
+  vertical-align: -0.05em;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'/%3E%3Cpath d='M15 3h6v6'/%3E%3Cpath d='M10 14 21 3'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'/%3E%3Cpath d='M15 3h6v6'/%3E%3Cpath d='M10 14 21 3'/%3E%3C/svg%3E") no-repeat center / contain;
+}
+
 /* --- NDC 分類ナビ（ダーク） --- */
 .start-page .ndc-nav__heading {
   margin: 0 0 0.7rem;
@@ -1472,9 +1485,11 @@ body.start-page {
   color: var(--sp-text);
 }
 
+/* 「棚を見る」ボタンが実寸で入る高さを先に確保し、選択の有無で行が伸縮しないようにする。 */
 .start-page .ndc-nav__controls {
   justify-content: center;
   margin: 0 0 0.8rem;
+  min-height: 2.4rem;
 }
 .start-page .ndc-nav__crumbs {
   flex: 0 1 auto;
@@ -1493,6 +1508,10 @@ body.start-page {
   border: 1px solid var(--sp-accent);
 }
 .start-page .ndc-nav__view:hover { background: var(--sp-btn-hover); border-color: var(--sp-accent-deep); }
+/* 類目選択前は「すべて」だけを行の中央に置きたいので、非表示のボタンを行から外す
+ * （visibility:hidden のままだと幅が残り、パンくずが左へずれる）。行の高さは
+ * .ndc-nav__controls の min-height で確保済みなので上下のずれは起きない。 */
+.start-page .ndc-nav__view.is-inactive { display: none; }
 
 /* スライド用ビューポート。通常は素の流れ、アニメ中だけ 2 枚を重ねてクリップする。 */
 .ndc-nav__viewport { position: relative; }
@@ -1514,9 +1533,14 @@ body.start-page {
   width: 100%;
 }
 
+/* 分類名の長さは 2〜24 文字とばらつくため、折り返しの有無でボタンの高さが変わり
+ * 行ごと・階層ごとに大きさや位置が動いてしまう。高さを固定し、分類名は 2 行で
+ * クランプ（あふれたら省略記号）することで、どの階層でも同じ大きさ・配置にする。 */
 .start-page .ndc-btn {
   gap: 0.2rem;
+  height: 6rem;
   padding: 0.55rem 0.7rem;
+  overflow: hidden;
   color: var(--sp-text);
   background: var(--sp-surface);
   border: 1px solid var(--sp-line);
@@ -1528,10 +1552,21 @@ body.start-page {
   box-shadow: none;
 }
 .start-page .ndc-btn:disabled { opacity: 0.4; }
-.start-page .ndc-btn__code { color: #fff; }
-.start-page .ndc-btn__label { color: var(--sp-text); }
+.start-page .ndc-btn__code { color: #fff; line-height: 1.2; }
+/* 1 行に収まる分類名を増やすため本文よりやや小さめにし、収まらない場合は 2 行で
+ * 打ち切る（全文は title 属性と aria-label で参照できる）。 */
+.start-page .ndc-btn__label {
+  min-width: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--sp-text);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
 .start-page .ndc-btn__nolabel { color: var(--sp-muted); }
-.start-page .ndc-btn__count { color: var(--sp-muted); }
+.start-page .ndc-btn__count { color: var(--sp-muted); line-height: 1.3; }
 
 .start-page .ndc-nav__loading,
 .start-page .ndc-nav__error { color: var(--sp-muted); }
@@ -1545,3 +1580,111 @@ body.start-page {
   color: var(--sp-muted);
 }
 .ndc-nav__source a { text-decoration: underline; }
+
+/* --- スタートページ: モバイル表示 ---------------------------------------
+ * 縦長・狭幅でも 1 画面（スクロールなし）に収める。PC 表示（601px 以上）には
+ * 影響させない。主な違いは次の 3 点。
+ *  - キャッチコピーを 1 行に収まる文字サイズへ縮小。
+ *  - NDC ボタンを 横2×縦5 に組み替え、件数を省いて 1 行ぶんの高さを削る。
+ *  - 分類名は記号と同じ行に置き、折り返しても高さが変わらないよう
+ *    ボタン高さを固定する（2 行でクランプ）。
+ * ----------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  body.start-page { padding: 1rem 0.9rem; }
+  .start-page .start { gap: 1.1rem; }
+
+  /* 折り返して 2 行になると縦の余白を圧迫するため、1 行で収まる幅まで縮める。 */
+  .start__copy {
+    font-size: clamp(1.15rem, 5.6vw, 1.6rem);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+
+  .start__search-modes { gap: 0.4rem 0.8rem; margin-bottom: 0.7rem; }
+  .start-page .search__input { padding: 0.6rem 0.85rem; font-size: 0.95rem; }
+  .start-page .search__button { padding: 0 1.1rem; font-size: 0.95rem; }
+  /* 説明文（リンク記号を含む全体）が 2 行に収まるサイズ。 */
+  .start-page .start__note { margin-top: 0.5rem; font-size: 0.78rem; }
+
+  .start-page .ndc-nav__heading { margin-bottom: 0.6rem; font-size: 0.95rem; }
+  /* 幅が足りずパンくずと「棚を見る」は必ず 2 段になるので、選択前から 2 段ぶんの
+   * 高さを確保しておく。こうしないと選択のたびにボタン群が上下に動く。 */
+  .start-page .ndc-nav__controls {
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.45rem;
+    margin-bottom: 0.6rem;
+    min-height: 4.4rem;
+  }
+
+  /* 横2×縦5。行の高さはボタン側で固定するので、分類名の行数で崩れない。 */
+  .start-page .ndc-nav__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+  .start-page .ndc-btn {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.35rem;
+    height: 2.8rem;          /* 折り返しの有無でサイズ・配置が変わらないよう固定 */
+    padding: 0.35rem 0.55rem;
+    overflow: hidden;
+  }
+  .start-page .ndc-btn__code { font-size: 0.85rem; line-height: 1.2; flex: 0 0 auto; }
+  /* できるだけ 1 行に収まる字送りにし、収まらない場合だけ 2 行でクランプする。 */
+  .start-page .ndc-btn__label {
+    min-width: 0;
+    font-size: 0.72rem;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  /* モバイルは件数を出さない（高さの節約と 2 列での可読性を優先）。 */
+  .start-page .ndc-btn__count { display: none; }
+
+  .ndc-nav__source { margin-top: 0.6rem; font-size: 0.7rem; }
+}
+
+/* 画面の短いモバイル（iPhone SE 世代など）は既定の余白では 1 画面に収まらないため、
+ * 余白とボタン高さを段階的に詰める。組み方（横2×縦5・件数なし）と、選択前後で
+ * 配置を動かさないための .ndc-nav__controls の min-height は上のブロックのまま。 */
+@media (max-width: 600px) and (max-height: 660px) {
+  body.start-page { padding: 0.7rem 0.8rem; }
+  .start-page .start { gap: 0.8rem; }
+  .start__search-modes { margin-bottom: 0.6rem; }
+  .start-page .start__note { margin-top: 0.4rem; }
+  .start-page .ndc-nav__heading { margin-bottom: 0.5rem; }
+  .start-page .ndc-nav__controls { margin-bottom: 0.5rem; }
+  .start-page .ndc-nav__grid { gap: 0.4rem; }
+  .start-page .ndc-btn { height: 2.6rem; padding: 0.3rem 0.5rem; }
+  .ndc-nav__source { margin-top: 0.5rem; }
+}
+
+/* さらに短い画面（320×568 など）。ここまで詰めて 1 画面に収める。 */
+@media (max-width: 600px) and (max-height: 600px) {
+  body.start-page { padding: 0.6rem 0.8rem; }
+  .start-page .start { gap: 0.65rem; }
+  .start__copy { line-height: 1.25; }
+  .start__search-modes { margin-bottom: 0.5rem; }
+  .start-page .search__input { padding: 0.45rem 0.8rem; }
+  .start-page .start__note { margin-top: 0.3rem; }
+  .start-page .ndc-nav__heading { margin-bottom: 0.4rem; }
+  .start-page .ndc-nav__controls { margin-bottom: 0.4rem; }
+  .start-page .ndc-nav__grid { gap: 0.35rem; }
+  .start-page .ndc-btn { height: 2.4rem; padding: 0.25rem 0.45rem; }
+  .start-page .ndc-btn__label { line-height: 1.2; }
+  .ndc-nav__source { margin-top: 0.4rem; }
+}
+
+/* 極端に低い画面（横向きなど）は 1 画面に収めきれない。内容が切れて操作できなく
+ * なるのを避けるため、この場合だけスクロールを許可する。 */
+@media (max-width: 600px) and (max-height: 480px) {
+  body.start-page {
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+    justify-content: flex-start;
+  }
+}

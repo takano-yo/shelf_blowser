@@ -3,7 +3,8 @@
 /* shelf_blowser — スタートページ（入口）
  * 検索窓は素の GET フォームで shelf.html?q=<語> へ遷移する（JS 不要）。
  * このスクリプトは NDC 分類ナビ（類目 1 桁 → 綱目 2 桁 → 細目 3 桁の 3 階層・
- * 各階層 10 ボタンを 横5×縦2 で配置）を NDC マスタ data/ndc/index.json から描画する。
+ * 各階層 10 ボタンを PC は 横5×縦2 / モバイルは 横2×縦5 で配置）を
+ * NDC マスタ data/ndc/index.json から描画する。
  *  - 1・2 桁のボタン = その分類を選んで 1 つ下の階層を表示する（掘り下げ）。
  *  - 3 桁のボタン    = 選択＝遷移（shelf.html?ndc=<3桁> へのリンク）。
  *  - パンくず（選択中の分類）のクリック = その階層（選択前）へ戻る。
@@ -92,17 +93,19 @@ function gridHtml(forPath) {
       <span class="ndc-btn__code">${escapeHtml(code)}</span>
       <span class="ndc-btn__label">${labelHtml}</span>
       <span class="ndc-btn__count">${escapeHtml(countText)}</span>`;
+    // 長い分類名は表示上 2 行で打ち切られるため、全文を title でも参照できるようにする。
+    const title = escapeHtml(codeWithLabel(code));
     if (code.length === 3 && !disabled) {
-      return `<a class="ndc-btn" href="${escapeHtml(shelfUrl(code))}"
-                 aria-label="NDC ${escapeHtml(codeWithLabel(code))} の棚を見る">${inner}</a>`;
+      return `<a class="ndc-btn" href="${escapeHtml(shelfUrl(code))}" title="${title}"
+                 aria-label="NDC ${title} の棚を見る">${inner}</a>`;
     }
-    return `<button type="button" class="ndc-btn" data-code="${escapeHtml(code)}"
+    return `<button type="button" class="ndc-btn" data-code="${escapeHtml(code)}" title="${title}"
                     ${disabled ? 'disabled' : ''}
-                    aria-label="NDC ${escapeHtml(codeWithLabel(code))} ${code.length === 3 ? 'の棚を見る' : 'を選ぶ'}">${inner}</button>`;
+                    aria-label="NDC ${title} ${code.length === 3 ? 'の棚を見る' : 'を選ぶ'}">${inner}</button>`;
   }).join('');
 }
 
-/* 5×2 のボタングリッド要素を生成する。 */
+/* ボタングリッド要素（10 個）を生成する。列数の切り替えは CSS 側。 */
 function makeGrid(forPath) {
   const g = document.createElement('div');
   g.className = 'ndc-nav__grid';
@@ -261,7 +264,7 @@ function syncSearchModeUi() {
   if (searchEls.note) {
     searchEls.note.innerHTML = serverUp
       ? DEFAULT_NOTE_HTML
-      : '検索サーバー未稼働のため <strong>CiNii API 検索</strong> は使用できません。収録データ（<a href="https://ci.nii.ac.jp/books/" target="_blank" rel="noopener">CiNii Books</a> のスナップショット）から NDC 類（1桁）内を検索します。';
+      : '検索サーバー未稼働のため <strong>CiNii API 検索</strong> は使用できません。<a class="link-ext" href="https://ci.nii.ac.jp/books/" target="_blank" rel="noopener">CiNii Books</a>';
   }
 }
 
