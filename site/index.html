@@ -5,7 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>shelf_blowser — 本棚ブラウジングの入口</title>
   <meta name="description" content="キーワードまたは NDC 分類（日本十進分類法）から入る、書誌データの本棚ブラウジング">
-  <link rel="stylesheet" href="css/styles.css?v=20260725a">
+  <!-- キャッチコピー用の丸ゴシック（M PLUS Rounded 1c Light）。使う文字だけの
+       サブセットが読まれる。読めない環境では端末側のフォントへフォールバックする
+       ため、display=swap で描画は止めない。 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@300&display=swap">
+  <link rel="stylesheet" href="css/styles.css?v=20260725b">
 </head>
 <body class="start-page">
   <main class="start">
@@ -75,6 +81,6 @@
     </section>
   </main>
 
-  <script src="js/start.js?v=20260725a" defer></script>
+  <script src="js/start.js?v=20260725b" defer></script>
 </body>
 </html>

@@ -10,7 +10,7 @@
  *  - パンくず（選択中の分類）のクリック = その階層（選択前）へ戻る。
  *  - 「この分類の棚を見る」= 1・2 桁の段階で、それ以上絞り込まずに
  *    shelf.html?ndc=<記号> へ遷移する。
- * 階層移動はボタン群（5×2）を横スライドで切り替える。掘り下げ＝現ボタンが左へ流れ
+ * 階層移動はボタン群を横スライドで切り替える。掘り下げ＝現ボタンが左へ流れ
  * 右から新ボタンが出る／戻る＝現ボタンが右へ流れ左から新ボタンが出る。
  * データ未整備・0 件の分類はボタンを無効表示にする（現データでは全分類に件数あり）。
  */
@@ -38,8 +38,12 @@ const searchEls = {
 let serverUp = false; // /api/ping による稼働判定（未稼働なら API 検索を不可にする）
 const DEFAULT_NOTE_HTML = searchEls.note ? searchEls.note.innerHTML : '';
 
-const prefersReducedMotion =
-  window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* モーション低減の設定。読み込み時に固定せず切り替えのたびに見る（OS 側の設定変更に追従）。 */
+const reduceMotionQuery =
+  window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+function prefersReducedMotion() {
+  return !!(reduceMotionQuery && reduceMotionQuery.matches);
+}
 
 let byCode = new Map(); // 分類記号 -> { code, label, count, records, hasData, fetchedAt }
 let path = '';          // 選択済みの上位記号。'' = 類目選択中 / '9' = 綱目選択中 / '91' = 細目選択中
@@ -149,51 +153,69 @@ function updateChrome() {
 }
 
 /* 階層移動。direction: 'forward'（掘り下げ）/ 'back'（戻る）。
- * forward = 現ボタンが左へ流れ右から新ボタン、back = 逆向き。 */
+ * forward = 現ボタンが左へ流れ右から新ボタン、back = 逆向き。
+ *
+ * 動きは Web Animations API で付ける。CSS の transition に頼ると、
+ * prefers-reduced-motion 向けの `* { transition: none !important }` に巻き込まれて
+ * 切り替えの手応えが完全に消えてしまうため。モーション低減の設定時は横移動をやめ、
+ * 短いクロスフェードだけに置き換える（動きは出さないが、切り替わったことは伝わる）。 */
 function navigate(newPath, direction) {
   if (animating) return;
   path = newPath;
   updateChrome();
 
   const outgoing = activeGrid;
-  // 初回描画・モーション無効時はスライドせず即差し替え。
-  if (!outgoing || prefersReducedMotion) {
-    const g = makeGrid(newPath);
-    els.viewport.replaceChildren(g);
-    activeGrid = g;
+  const incoming = makeGrid(newPath);
+  // 初回描画・WAAPI 非対応環境はアニメーションなしで差し替える。
+  if (!outgoing || typeof incoming.animate !== 'function') {
+    els.viewport.replaceChildren(incoming);
+    activeGrid = incoming;
     return;
   }
 
   animating = true;
   const forward = direction !== 'back';
-  const incoming = makeGrid(newPath);
+  const soft = prefersReducedMotion();
+  const duration = soft ? 140 : 380;
+  const easing = soft ? 'ease' : 'cubic-bezier(0.4, 0, 0.2, 1)';
+  const shift = (x) => (soft ? 'none' : `translateX(${x})`);
 
   // アニメーション中は 2 枚のグリッドが重なるため、ビューポート高さを固定して崩れを防ぐ。
   els.viewport.style.height = `${outgoing.offsetHeight}px`;
   els.viewport.classList.add('is-animating');
-
-  incoming.style.transform = `translateX(${forward ? '100%' : '-100%'})`;
-  incoming.style.opacity = '0';
   els.viewport.appendChild(incoming);
-  void incoming.offsetWidth; // 初期位置を確定させてからトランジションを開始（reflow）
-
-  outgoing.style.transform = `translateX(${forward ? '-100%' : '100%'})`;
-  outgoing.style.opacity = '0';
-  incoming.style.transform = 'translateX(0)';
-  incoming.style.opacity = '1';
   activeGrid = incoming;
 
+  const opts = { duration, easing, fill: 'forwards' };
+  const anims = [
+    outgoing.animate([
+      { transform: shift('0'), opacity: 1 },
+      { transform: shift(forward ? '-100%' : '100%'), opacity: 0 },
+    ], opts),
+    incoming.animate([
+      { transform: shift(forward ? '100%' : '-100%'), opacity: 0 },
+      { transform: shift('0'), opacity: 1 },
+    ], opts),
+  ];
+
+  // 後片付けはこの 1 回の切り替えにつき 1 度だけ。フラグを共有の animating で兼ねると、
+  // 前回のフォールバック用タイマーが次の切り替えの最中に発火して途中で片付けてしまい、
+  // 消えるはずのグリッドが残る（余白として居座る）。
+  let settled = false;
+  let timer = 0;
   const done = () => {
-    if (!animating) return;
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
     animating = false;
+    // 終了状態は素の表示（transform なし・不透明）と同じなので、fill を残さず破棄してよい。
+    for (const a of anims) a.cancel();
     outgoing.remove();
     els.viewport.classList.remove('is-animating');
     els.viewport.style.height = '';
-    incoming.style.transform = '';
-    incoming.style.opacity = '';
   };
-  incoming.addEventListener('transitionend', done, { once: true });
-  setTimeout(done, 480); // transitionend が来ない場合のフォールバック
+  Promise.all(anims.map((a) => a.finished)).then(done, done);
+  timer = setTimeout(done, duration + 120); // finished が解決しない場合のフォールバック
 }
 
 function bindEvents() {
