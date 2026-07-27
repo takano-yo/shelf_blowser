@@ -109,9 +109,14 @@
 **軽い正規化**にとどめ、暫定精度であることを許容する。
 
 - **役割語の除去**: 末尾の `著 / 編 / 編著 / 校注 / 注 / 訳 / 編集 / 監修 / 共著 /
-  撰 / 解説 / 述 / 校訂 / 編纂 / 画 / 責任編集` 等を取り除く（出現上位は 著 3,365・編 2,043）。
-  `責任編集` は `編集` を含むため、`編集` より先に判定し「◯◯責任」が
-  著者名に残らないようにする。
+  撰 / 解説 / 述 / 校訂 / 編纂 / 画 / 責任編集 / 編集責任 / 翻訳` 等を取り除く
+  （出現上位は 著 3,365・編 2,043）。
+  **短い役割語を含む長い役割語は、短い方より先に判定する**（`ROLE_WORDS` は
+  長いものから並べる）。そうしないと役割語の一部だけが切り取られ、残りが
+  著者名に混入する:
+  - `責任編集` は `編集` を含む → 先に判定しないと「◯◯責任」が残る。
+  - `翻訳` は `訳` を含む → 先に判定しないと「◯◯翻」が残る。
+  - `編集責任` は末尾一致で他と競合しないが、同系の役割語として併記する。
 - **複数著者の分割**: 区切り `; / ；` を主たる区切りとし、必要に応じて
   `,`・全角読点も考慮する（実態: `;`=397件, `,`=466件, 半角空白=1,164件）。
   半角空白は姓名間にも現れるため、**機械的な空白分割はしない**。
@@ -267,6 +272,32 @@
 
 ---
 
+## 著者正規化の再適用（`--renormalize-inplace`）
+
+役割語辞書など**著者正規化の規則を直したときに、生成済みの棚データを追随させる**
+ための経路。規則を直しただけでは `site/data/` の成果物は古い値のまま残り、
+**スクリプトとサイトの表示が食い違う**（例: PR #96 で `責任編集` を役割語に
+加えたが棚データは未再生成で、`◯◯責任` のままの著者名が 3,143 レコード残っていた）。
+
+- **なぜ再ビルドではなくその場更新か**: 既定データは `source/` から再ビルドできるが、
+  NDC 棚の生レスポンス（`.cache/ndc/`）はリポジトリ管理外で棚を作り直せない
+  （`--ndc-covers-inplace` と同じ事情）。
+- **なぜその場更新で正しい値になるか**: `creators`・`contribKind` は原文
+  `creatorRaw` **だけ**から決まる純粋関数の出力で、`creatorRaw` は成果物に
+  保持されている。したがって成果物を入力に**再ビルドと同じ値を復元できる**。
+- **更新するのは `creators`・`contribKind` の 2 項目だけ**。棚の並び・件数・
+  `coverUrl` を含む他の項目は変更しない。差分の出たファイルだけ書き戻すため、
+  2 回目の実行は 0 ファイル更新（冪等）。
+- **併せて再生成するもの**: 検索コーパス（`site/data/search/`）は `creators` を
+  検索対象に含むが、Pages デプロイのたびに自動再生成されるため手当ては不要。
+  逆引きシャード（`site/data/ndc/rev/`）は NCID のみを見るため影響しない。
+
+```bash
+python build/build.py --renormalize-inplace
+```
+
+---
+
 ## 整列（段階 4）
 
 - **第 1 キー**: `ownerCount` 降順（主要書が先頭）。
@@ -371,6 +402,10 @@ python build/build.py --ndc .cache/ndc/ --ndc-out site/data/ndc/ \
 python build/build.py --ndc-covers-inplace --ndc-out site/data/ndc/ \
                       --cache .cache/openbd/ --cover-batch 1000 --cover-interval 1.0
 
+# 著者正規化の規則（役割語辞書など）を直したときに、生成済みの棚データへ
+# 再適用する（NDC 生キャッシュ不要。creators/contribKind だけをその場更新）
+python build/build.py --renormalize-inplace --out site/data/ --ndc-out site/data/ndc/
+
 # NCID→3桁NDC の逆引きシャードを生成（NDC 生キャッシュ不要。
 # site/data/ndc/<3桁>.json から site/data/ndc/rev/<XX>.json を導出。
 # NDC 棚データを再生成・更新したら、これも再実行してコミットする）
@@ -396,6 +431,7 @@ python build/build.py --source source/日本近代文学.json \
 | `--ndc-max N` | NDC 棚 1 分類あたりの件数上限（所蔵館数上位を優先して切り詰め） | `1000`（全分類の件数実測にもとづき確定・2026-07-14） |
 | `--ndc-covers` | NDC 棚生成時に OpenBD 表紙も付与（`--ndc` と併用） | 無効 |
 | `--ndc-covers-inplace` | 既存 `site/data/ndc/*.json` に OpenBD 表紙を後付け（NDC 生キャッシュ不要） | 無効 |
+| `--renormalize-inplace` | 既存 `site/data/books.json`・`site/data/ndc/*.json` の `creators`/`contribKind` を `creatorRaw` から再計算（NDC 生キャッシュ不要。→ 下記「著者正規化の再適用」） | 無効 |
 | `--ndc-rev` | NCID→3桁NDC の逆引きシャード生成（`site/data/ndc/` → 同 `rev/`。NDC 生キャッシュ不要。→ [docs/detail-related-books.md](../docs/detail-related-books.md) D1） | 無効 |
 | `--cover-batch N` | OpenBD 1 リクエストの ISBN 数（NDC 一括取得の既定） | `1000` |
 | `--cover-interval SEC` | OpenBD リクエスト間隔・秒（API 提供元へのマナー） | `1.0` |
