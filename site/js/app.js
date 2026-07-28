@@ -1610,7 +1610,7 @@ function hideNdcHeading() {
 /* ---------- クライアント側絞り込み（NDC 棚内検索のフォールバック） ---------- */
 
 /* 1 レコードの検索対象文字列（タイトル・著者・出版社・シリーズ名）を連結して返す。
- * server のローカル代役（core.ciniisearch.search_local）と同じ思想。 */
+ * server 側の静的 NDC データ絞り込み（server/app.py の _book_haystack）と同じ対象。 */
 function bookHaystack(b) {
   const parts = [b.title || '', b.creatorRaw || ''];
   if (b.creators) parts.push(...b.creators);

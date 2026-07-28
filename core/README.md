@@ -9,7 +9,7 @@
 | ファイル | 役割 |
 |---|---|
 | `normalize.py` | OpenSearch item → books レコードの正規化・整列。**純粋関数のみ**（ネットワーク・ファイル I/O なし・冪等） |
-| `ciniisearch.py` | CiNii OpenSearch の取得。ライブ取得（`fetch_live`）とローカル代役（`search_local`）の 2 系統。ネットワーク I/O はここに集約 |
+| `ciniisearch.py` | CiNii OpenSearch の取得（`fetch_response` / `fetch_live`）。ネットワーク I/O はここに集約 |
 
 - 正規化・種別判定（`contribKind`）・「ほか/他」省略表記の検出などの仕様詳細は
   [`build/README.md`](../build/README.md) の「抽出仕様」を参照（本モジュールが実装）。
