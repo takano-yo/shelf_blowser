@@ -259,7 +259,7 @@ async function pingServer(timeoutMs = 2500) {
 /* 類セレクタ（0〜9・分類名つき）を構築する。分類名は byCode（index.json）から。 */
 function populateClassSelect() {
   if (!searchEls.cls) return;
-  const cur = searchEls.cls.value || '9';
+  const cur = searchEls.cls.value || '0';
   const opts = [];
   for (let d = 0; d < 10; d++) {
     const c = String(d);
@@ -268,7 +268,7 @@ function populateClassSelect() {
     opts.push(`<option value="${c}">${c}${label ? ' ' + escapeHtml(label) : ''}</option>`);
   }
   searchEls.cls.innerHTML = opts.join('');
-  searchEls.cls.value = cur; // 既定は 9（サイトの既定棚＝日本近代文学は NDC 9 系）
+  searchEls.cls.value = cur; // 既定は 0（先頭の類。既定棚は持たないため類の指定は必須）
 }
 
 /* モードに応じて類セレクタの表示可否・サーバ未稼働時のグレーアウトを更新する。 */
@@ -317,7 +317,7 @@ function bindSearch() {
     if (mode === 'api' && serverUp) {
       url = `${SHELF_URL}?q=${encodeURIComponent(q)}&mode=api`;
     } else {
-      const cls = searchEls.cls ? searchEls.cls.value : '9';
+      const cls = searchEls.cls ? searchEls.cls.value : '0';
       url = `${SHELF_URL}?ndc=${encodeURIComponent(cls)}&q=${encodeURIComponent(q)}`;
     }
     location.href = url;
@@ -343,7 +343,7 @@ async function init() {
     els.viewport.replaceChildren(activeGrid);
   } catch (err) {
     els.viewport.innerHTML =
-      `<p class="ndc-nav__error">分類データ（data/ndc/index.json）を読み込めませんでした（${escapeHtml(String(err.message || err))}）。<br>キーワード検索、または <a href="shelf.html">既定の棚</a> をご利用ください。</p>`;
+      `<p class="ndc-nav__error">分類データ（data/ndc/index.json）を読み込めませんでした（${escapeHtml(String(err.message || err))}）。<br>時間をおいて再読み込みするか、上のキーワード検索をご利用ください。</p>`;
   }
 }
 

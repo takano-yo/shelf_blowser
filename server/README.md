@@ -2,7 +2,7 @@
 
 > 「検索語 → CiNii OpenSearch 取得 → `core.normalize` で正規化・整列 →
 > `core.openbd` で書影を一括付与 → books 配列を JSON で返す」だけの最小サーバ。
-> 返す JSON は `build` が出力する `site/data/books.json` と**同一スキーマ**の
+> 返す JSON は `build` が出力する `site/data/ndc/<記号>.json` と**同一スキーマ**の
 > ため、表示層（`site/`）は無改修で動的検索に対応する。標準ライブラリのみ・
 > 単一ファイル（`app.py`）。
 
@@ -11,21 +11,21 @@
 | パス | 内容 |
 |---|---|
 | `GET /api/ping` | サーバー稼働判定用（`{"ok": true}` を返すだけ）。site が読込時に叩き、失敗時は CiNii API 検索モードをグレーアウトする（[docs/site-search.md](../docs/site-search.md)） |
-| `GET /api/search?q=<語>&count=<N>` | 動的検索の結果（books 配列）。付随情報は `X-Result-Source`（cinii / local / local-fallback / ndc-local / ndc-local-fallback / cache）・`X-Result-Count` ヘッダで返す |
-| `GET /api/search?q=<語>&ndc=<記号>` | NDC 分類内の検索（1〜3 桁）。`q` と併用で「その分類 かつ その語」、`q` 無しなら分類全体（＝静的 `site/data/ndc/<記号>.json` と同等）。ライブ時は CiNii の分類検索（`clas=<記号>*`・前方一致）との複合クエリ、ローカル時・ライブ失敗時は静的 NDC データの絞り込み。不正な記号は 400、データ未整備の分類は 404 |
+| `GET /api/search?q=<語>&count=<N>` | 動的検索の結果（books 配列）。付随情報は `X-Result-Source`（cinii / ndc-local / ndc-local-fallback / cache）・`X-Result-Count` ヘッダで返す。**`ndc` なしの全体検索はローカル代役を持たない**ため、CiNii へ到達できないときは 502（特定の棚へフォールバックしない） |
+| `GET /api/search?q=<語>&ndc=<記号>` | NDC 分類内の検索（1〜3 桁）。`q` と併用で「その分類 かつ その語」、`q` 無しなら分類全体（＝静的 `site/data/ndc/<記号>.json` と同等）。既定は CiNii の分類検索（`clas=<記号>*`・前方一致）との複合クエリ、`--offline` 時・ライブ失敗時は静的 NDC データの絞り込み。不正な記号は 400、データ未整備の分類は 404 |
 | その他のパス | `site/` 配下の静的ファイル配信（同一オリジンなので CORS 不要） |
 
 ## 実行方法
 
 ```bash
-# 既定: ローカル source を検索語で絞り込む（CiNii に到達できない環境でも動く）
+# 既定: CiNii OpenSearch を実際に叩く
 python server/app.py --port 8000
 
-# 本番相当: CiNii OpenSearch を実際に叩く（失敗時はローカルへフォールバック）
-python server/app.py --port 8000 --live
+# CiNii に到達できない環境: 分類内検索だけを静的な site/data/ndc/ で応答する
+python server/app.py --port 8000 --offline
 ```
 
-主なオプション: `--host` / `--port` / `--live` / `--source PATH` / `--count N` /
+主なオプション: `--host` / `--port` / `--offline` / `--count N` /
 `--cache-ttl 秒`（0 で無期限）/ `--no-covers`（書影取得を無効化）。
 
 ## キャッシュ
@@ -75,7 +75,7 @@ python server/app.py --port 8000 --live
   `X-Result-Source` / `X-Result-Count` を読むには
   `Access-Control-Expose-Headers` の付与が必要。
 - **静的配信にキャッシュ制御が無い**: `Cache-Control` / `ETag` を付ける
-  （`books.json` の更新が反映されるよう max-age は短めに）。
+  （棚データの更新が反映されるよう max-age は短めに）。
 
 **手順**: いずれも `app.py` 内で完結する（標準ライブラリのみ維持）。
 圧縮 → キャッシュ掃除 → 入力検証 → Expose-Headers → キャッシュ制御の順で
@@ -86,7 +86,7 @@ python server/app.py --port 8000 --live
 - 取得層の移行（appid・ページング・新旧切替フラグ）は
   [core/README.md](../core/README.md) の #1 で行う。server 側の作業は:
   - appid を環境変数（`CINII_APP_ID`）から読んで core へ渡す。
-  - `--live` の取得先（新旧 API）を選ぶ起動オプションを追加する。
+  - ライブ取得先（新旧 API）を選ぶ起動オプションを追加する。
   - ページング取得により 1 検索のコール数が増えるため、**キャッシュ TTL の既定を
     見直す**（長めにして CiNii への負荷を抑える）。
 

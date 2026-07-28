@@ -3,7 +3,7 @@
 
 役割は「検索語 → OpenSearch 取得 → core.normalize で正規化・整列 →
 core.openbd で書影を一括付与 → books 配列を JSON で返す」だけ。返す JSON は
-build が出力する site/data/books.json と同一スキーマ（レコード配列）で、
+build が出力する site/data/ndc/<記号>.json と同一スキーマ（レコード配列）で、
 フロント（site/js/app.js）はこれをそのまま buildShelfItems() に渡せる
 ── 表示層を一切変えずに動的化できる、という設計の要。
 
@@ -18,11 +18,12 @@ build が出力する site/data/books.json と同一スキーマ（レコード�
   それ以外のパス                              … site/ 配下の静的ファイル配信
                                                （同一オリジンなので CORS 不要）
 
-取得元は 2 モード:
-  - 既定（--source 指定 or ライブ失敗時）… ローカル OpenSearch JSON を絞り込む。
-    ndc 指定時は静的な site/data/ndc/<記号>.json（正規化済み）を絞り込む
-  - --live                                … CiNii OpenSearch を実際に叩く。
-    ndc 指定時は分類検索（clas=<記号>*・前方一致）と語の複合クエリで取得する
+取得元:
+  - 既定 … CiNii OpenSearch を実際に叩く。ndc 指定時は分類検索
+    （clas=<記号>*・前方一致）と語の複合クエリで取得する
+  - CiNii へ到達できないとき（--offline 指定 or ライブ失敗時）… ndc 指定時のみ、
+    静的な site/data/ndc/<記号>.json（正規化済み）を絞り込んで返す。
+    ndc なしの全体検索はローカル代役を持たないためエラーを返す
 
 検索結果は ISBN を代表に OpenBD API（core.openbd）へ一括問い合わせし coverUrl
 を埋める（--no-covers で無効化可）。取得結果は build と同じ .cache/openbd/ に
@@ -55,13 +56,11 @@ SITE_DIR = ROOT / "site"
 NDC_DATA_DIR = SITE_DIR / "data" / "ndc"  # build --ndc の出力（分類ごとの棚データ）
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
 OPENBD_CACHE_DIR = ROOT / ".cache" / "openbd"  # build と共有（ISBN 単位キャッシュ）
-DEFAULT_SOURCE = ROOT / "source" / "日本近代文学.json"
 
 # 起動オプション（main で確定）
 CONFIG = {
-    "live": False,          # True: CiNii を叩く / False: ローカル source を絞り込む
-    "source": DEFAULT_SOURCE,
-    "count": 10000,         # build（source/*.json 生成）と同じ既定値。検索語の全件取得を狙う
+    "live": True,           # True: CiNii を叩く / False: 静的 NDC データのみで応答する
+    "count": 10000,         # CiNii の 1 リクエスト上限。検索語の全件取得を狙う
     "cache_ttl": 3600,      # 秒。キャッシュの有効期限（0 で無期限）
     "covers": True,         # 検索結果に OpenBD で書影 URL を一括付与するか
 }
@@ -121,7 +120,7 @@ def _filter_books(books, query):
 def search_ndc_static(ndc, query):
     """静的な NDC 棚データ（site/data/ndc/<記号>.json）を読み、query で絞り込む。
 
-    データは build --ndc の出力＝正規化・整列済み（books.json と同一スキーマ）
+    データは build --ndc の出力＝正規化・整列済み（棚データと同一スキーマ）
     なので、そのまま絞り込むだけでよい。書影も静的データの値のまま返す
     （＝静的ファイル配信と同等の結果。CiNii へ到達できない環境の代役）。
     """
@@ -140,7 +139,10 @@ def search_books(query, count, ndc=None):
     ndc あり（分類内検索）:
       - ライブ時は CiNii の分類検索（clas=<記号>*・上位桁の前方一致）と語の複合
         クエリで取得する。q 無しなら分類全体（所蔵館数降順の上位 count 件）。
-      - ローカル時・ライブ失敗時は静的な site/data/ndc/<記号>.json を絞り込む。
+      - オフライン時・ライブ失敗時は静的な site/data/ndc/<記号>.json を絞り込む。
+
+    ndc なし（全体検索）はローカル代役を持たない。CiNii へ到達できないときは
+    RuntimeError を投げ、フロントには 502 として返す（特定の棚へは落とさない）。
     """
     cache_path = _cache_path(query, count, ndc)
     cached = _load_cache(cache_path)
@@ -154,8 +156,8 @@ def search_books(query, count, ndc=None):
             items = ciniisearch.fetch_live(query or None, count=count,
                                            clas=f"{ndc}*" if ndc else None)
             source = "cinii"
-        except Exception as e:  # noqa: BLE001 — ライブ失敗はローカルへフォールバック
-            print(f"  [warn] CiNii 取得失敗、ローカルへフォールバック: {e}",
+        except Exception as e:  # noqa: BLE001 — ライブ失敗は静的 NDC データへ退避
+            print(f"  [warn] CiNii 取得失敗（ndc 指定時のみ静的データで応答）: {e}",
                   file=sys.stderr)
             live_failed = True
 
@@ -166,8 +168,10 @@ def search_books(query, count, ndc=None):
             source = "ndc-local-fallback" if live_failed else "ndc-local"
             _save_cache(cache_path, books)
             return books, source
-        items = ciniisearch.search_local(CONFIG["source"], query, count=count)
-        source = "local-fallback" if live_failed else "local"
+        raise RuntimeError(
+            "CiNii へ到達できないため全体検索を実行できません"
+            "（ndc 指定の分類内検索は静的データで応答できます）"
+        )
 
     books = normalize_items(items)  # ← build と同一の正規化・整列（core 共有）
     if CONFIG["covers"] and books:
@@ -229,7 +233,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"error": str(e)}, status=502)
             return
         # フロントは配列をそのまま books として扱うため、本体は配列で返す。
-        # 付随情報はヘッダで渡す（表示層の契約＝books.json 形状を崩さない）。
+        # 付随情報はヘッダで渡す（表示層の契約＝books 配列の形状を崩さない）。
         body = json.dumps(books, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -281,10 +285,8 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="動的検索の最小 API サーバ（検証用）")
     p.add_argument("--port", type=int, default=8000, help="待受ポート")
     p.add_argument("--host", default="127.0.0.1", help="待受ホスト")
-    p.add_argument("--live", action="store_true",
-                   help="CiNii OpenSearch を実際に叩く（既定はローカル source 絞り込み）")
-    p.add_argument("--source", default=str(DEFAULT_SOURCE),
-                   help="ローカル取得に使う OpenSearch JSON")
+    p.add_argument("--offline", action="store_true",
+                   help="CiNii を叩かない（ndc 指定の分類内検索のみ静的データで応答する）")
     p.add_argument("--count", type=int, default=10000, help="1 検索あたりの既定取得件数")
     p.add_argument("--cache-ttl", type=int, default=3600,
                    help="結果キャッシュの有効期限（秒・0 で無期限）")
@@ -292,13 +294,13 @@ def main(argv=None):
                    help="検索結果への OpenBD 書影取得を無効化する")
     args = p.parse_args(argv)
 
-    CONFIG["live"] = args.live
-    CONFIG["source"] = args.source
+    CONFIG["live"] = not args.offline
     CONFIG["count"] = args.count
     CONFIG["cache_ttl"] = args.cache_ttl
     CONFIG["covers"] = not args.no_covers
 
-    mode = "CiNii ライブ" if args.live else f"ローカル source（{args.source}）"
+    mode = ("静的 NDC データのみ（オフライン）" if args.offline
+            else "CiNii ライブ")
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"shelf_blowser dev server: http://{args.host}:{args.port}/")
     print(f"  取得モード: {mode}")
