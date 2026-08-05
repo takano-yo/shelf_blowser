@@ -5,22 +5,29 @@
 > 読める表示用 JSON へ整形する。
 >
 > **3 系統のデータを生成しうる。**
-> - **既定データ（キーワード棚）**（実装済み）… `source/日本近代文学.json` だけで
->   生成。本棚表示は一覧情報で足りる。→ `site/data/books.json`
-> - **NDC 棚データ**（計画・P2）… `fetch/ndc_fetch.py` が取得した分類ごとの一覧
->   （`.cache/ndc/`）を同一ロジックで正規化する。→ `site/data/ndc/*.json`＋
+> - **NDC 棚データ**（実装済み）… `fetch/ndc_fetch.py` が取得した分類ごとの一覧
+>   （`.cache/ndc/`）を正規化する。→ `site/data/ndc/*.json`＋
 >   NDC マスタ `index.json`（→ 本書「今後必要な作業 #2」・
->   [docs/site-structure.md](../docs/site-structure.md)）
+>   [docs/site-structure.md](../docs/site-structure.md)）。
+>   **表示層への唯一の書誌データ入力**であり、逆引きシャード `rev/` と
+>   収録データ検索のコーパスもここから導出する。
+> - **検索コーパス**（実装済み）… 棚データから `site/data/search/` を生成する
+>   （→ 本書「今後必要な作業 #6」）。
 > - **詳細検索用の索引（件名・著者名）**（後回し・P5）… `fetch` が取得した一件ごとの
 >   詳細 API を合流させて生成する。本書末尾に将来要件として記載するが、
 >   **現フェーズでは実装しない**（`site` 側も詳細検索を現フェーズ対象外としているため）。
+>
+> **廃止（2026-07-28）**: プロトタイプの既定データ（キーワード棚）
+> `source/日本近代文学.json` → `site/data/books.json` / `meta.json` は、
+> API 検索と NDC 分類棚の実装により役割を終えたため削除した。本書に残る
+> 5,212 件の統計値は、その試作データで測った当時の実測値の記録である。
 
 ---
 
 ## 目的
 
-`source/日本近代文学.json` を入力に、`site` の本棚ビューが必要とする
-正規化済みレコード配列 `site/data/books.json` を生成する。
+分類ごとに事前取得した OpenSearch レスポンスを入力に、`site` の本棚ビューが
+必要とする正規化済みレコード配列 `site/data/ndc/<記号>.json` を生成する。
 
 - 各書誌レコードを正規化したフラットな配列に変換する。
 - **`cinii:ownerCount` の降順**で整列する（棚の並び順 = 主要書が先頭）。
@@ -28,7 +35,7 @@
 - 加工は**冪等**（同じ入力から常に同じ出力）にする。
 
 下流 `site` の要件（本棚ビュー・シリーズまとめ・表紙／プレースホルダー・
-詳細オーバーレイ）を、この `books.json` 単体で満たせることをゴールとする。
+詳細オーバーレイ）を、この `books` 配列単体で満たせることをゴールとする。
 
 ---
 
@@ -36,16 +43,18 @@
 
 ```
 入力:
-  source/日本近代文学.json    （OpenSearch 一覧。@graph[0].items に 5,212 件）
+  .cache/ndc/<記号>.json      fetch/ndc_fetch.py が取得した分類ごとの一覧（OpenSearch）
+  .cache/ndc/labels.json      分類名（fetch/ndc_labels.py・JLA 公式 NDC9 版 CC-BY）
+  .cache/ndc/counts.json      （任意）全分類の件数実測
   .cache/openbd/             （任意）表紙取得のためのローカルキャッシュ
-  .cache/ndc/                （計画・P2）fetch/ndc_fetch.py が取得した分類ごとの一覧
+  site/data/ndc/             （--ndc-rev / --search-index / --ndc-covers-inplace の入力）
   fetch の出力（詳細レコード）  （件名・著者名の詳細検索を作る場合のみ＝後回し）
 
 出力:
-  site/data/books.json        （既定データ。正規化・ownerCount 降順の配列）
-  site/data/meta.json         （任意）生成日時・件数・カバー率などの統計
-  site/data/ndc/<記号>.json    （計画・P2）分類ごとの棚データ（books.json と同一スキーマ）
-  site/data/ndc/index.json    （計画・P2）NDC マスタ（記号・分類名・件数・出典）
+  site/data/ndc/<記号>.json    分類ごとの棚データ（正規化・ownerCount 降順の配列）
+  site/data/ndc/index.json    NDC マスタ（記号・分類名・件数・取得日・出典）
+  site/data/ndc/rev/<XX>.json NCID→3 桁 NDC の逆引きシャード
+  site/data/search/           収録データ検索のコーパス（Git 管理外・デプロイ時生成）
   site/data/facets.json       （後回し）ファセット索引
   site/data/details.json 等   （後回し）詳細検索用（件名・典拠著者・分類）
 ```
@@ -53,7 +62,7 @@
 入力ファイルの構造（実データで確認済み）:
 
 ```
-{ "@graph": [ { "items": [ {item}, … 5,212 件 … ] } ] }
+{ "@graph": [ { "items": [ {item}, … ] } ] }
 ```
 
 各 item は一覧レベルの書誌。`@graph[0].items` を走査して 1 item → 1 レコードへ変換する。
@@ -66,24 +75,25 @@
 テスト・再利用しやすくする。
 
 ```
-1. load      : source JSON を読み込み、@graph[0].items を取り出す
+1. load      : 分類ごとの生レスポンスを読み込み、@graph[0].items を取り出す
 2. normalize : item ごとにフィールドを抽出・正規化してレコード化（下記「抽出仕様」）
 3. enrich    : （任意）OpenBD から表紙 URL を取得し coverUrl を付与（キャッシュ利用）
-4. sort      : ownerCount 降順で整列（同値時の安定ソート規則は後述）
-5. write     : site/data/books.json を UTF-8・整形なし（または最小整形）で出力
-               （任意で meta.json も出力）
+4. sort      : ownerCount 降順で整列（同値時の安定ソート規則は後述）＋件数上限で切り詰め
+5. write     : site/data/ndc/<記号>.json を UTF-8・整形なしで出力
+               （NDC マスタ index.json も出力）
 ```
 
 - 段階 3（enrich）はネットワークアクセスを伴うため**任意・分離可能**にする。
-  オフラインでも段階 1→2→4→5 だけで `books.json` を生成でき、その場合は
+  オフラインでも段階 1→2→4→5 だけで棚データを生成でき、その場合は
   全レコード `coverUrl: null` とする（`site` 側はプレースホルダー表示で動作する）。
 - 段階 2 と 3 は item の順序に依存しない純粋変換とし、段階 4 で初めて整列する。
 
 ---
 
-## 抽出仕様（source 一覧 → books レコード）
+## 抽出仕様（OpenSearch 一覧 → books レコード）
 
-`source` item の実データ統計（全 5,212 件）にもとづく抽出・正規化規則。
+試作データ（全 5,212 件）の実データ統計にもとづいて定めた抽出・正規化規則。
+OpenSearch レスポンスの構造は分類検索でも同一のため、NDC 棚データにもそのまま適用する。
 **型・欠損・表記ゆれは下表の「実態」と「正規化方針」に従って必ず吸収する。**
 
 | 出力フィールド | 由来キー | 実態（5,212 件中） | 正規化方針 |
@@ -269,14 +279,14 @@
 - enrich をスキップした場合は全件 `coverUrl: null`（`site` は動作する）。
 
 > プレースホルダーの**表示内容**（タイトル・著者・出版社／シリーズ名）は `site`
-> 側で描画する。`books.json` がそれらの項目（`title`/`creators`/`publishers`/
+> 側で描画する。`books` 配列がそれらの項目（`title`/`creators`/`publishers`/
 > `series`）を持っていれば足りるため、build 側は値の保持のみ担保する。
 
 ### NDC 棚データへの表紙付与（`--ndc-covers` / `--ndc-covers-inplace`）
 
-`books.json` と同じ仕組みを **NDC 棚データ（`site/data/ndc/<記号>.json`）**にも適用する。
-表紙取得ロジックは `core/openbd.py` の `enrich_covers()` を共有し、`.cache/openbd/`
-キャッシュも共通なので、**books.json と NDC 棚で重複する ISBN は一度しか問い合わせない**。
+**NDC 棚データ（`site/data/ndc/<記号>.json`）**への表紙付与。
+表紙取得ロジックは `core/openbd.py` の `enrich_covers()`、`.cache/openbd/`
+キャッシュは ISBN 単位で共通なので、**分類をまたいで重複する ISBN は一度しか問い合わせない**。
 
 - **2 経路**:
   - `--ndc`（棚生成）に `--ndc-covers` を併用すると、生成と同時に表紙を付与する。
@@ -304,9 +314,8 @@
 **スクリプトとサイトの表示が食い違う**（例: PR #96 で `責任編集` を役割語に
 加えたが棚データは未再生成で、`◯◯責任` のままの著者名が 3,143 レコード残っていた）。
 
-- **なぜ再ビルドではなくその場更新か**: 既定データは `source/` から再ビルドできるが、
-  NDC 棚の生レスポンス（`.cache/ndc/`）はリポジトリ管理外で棚を作り直せない
-  （`--ndc-covers-inplace` と同じ事情）。
+- **なぜ再ビルドではなくその場更新か**: NDC 棚の生レスポンス（`.cache/ndc/`）は
+  リポジトリ管理外で棚を作り直せない（`--ndc-covers-inplace` と同じ事情）。
 - **なぜその場更新で正しい値になるか**: `creators`・`contribKind` は原文
   `creatorRaw` **だけ**から決まる純粋関数の出力で、`creatorRaw` は成果物に
   保持されている。したがって成果物を入力に**再ビルドと同じ値を復元できる**。
@@ -335,9 +344,10 @@ python build/build.py --renormalize-inplace
 
 ---
 
-## 出力スキーマ（`site/data/books.json`）
+## 出力スキーマ（`site/data/ndc/<記号>.json`）
 
-`books.json` は**レコードの配列**（`ownerCount` 降順）。1 レコードの例:
+棚データは**レコードの配列**（`ownerCount` 降順）。動的検索 API の応答も同じ形。
+1 レコードの例:
 
 ```jsonc
 {
@@ -366,33 +376,23 @@ python build/build.py --renormalize-inplace
 - 欠損項目は**キーを省略せず**、空配列 `[]` または `null` を明示する
   （`site` 側の分岐を単純化するため）。
 
-### 任意: `site/data/meta.json`
+### 生成メタ: `site/data/ndc/index.json`
 
-生成のトレーサビリティ用。`site` の必須入力ではない。
-
-```jsonc
-{
-  "generatedAt": "2026-06-27T00:00:00Z",
-  "sourceFile": "source/日本近代文学.json",
-  "total": 5212,
-  "withIsbn": 2794,
-  "withCover": 221,
-  "sort": "ownerCount desc, ncid asc"
-}
-```
+生成のトレーサビリティ（生成日時・分類ごとの件数・取得日・出典）は
+NDC マスタ `index.json` が担う（→「今後必要な作業 #2」）。
 
 ---
 
 ## 設計方針
 
 - 出力は GitHub Pages（静的配信）でそのまま読めるプレーン JSON とする。
-- **冪等性**: 同じ入力（＋同じキャッシュ）から常に同じ `books.json` を生成する。
+- **冪等性**: 同じ入力（＋同じキャッシュ）から常に同じ棚データを生成する。
   整列の同値順・著者正規化・キャッシュ参照はすべて決定的にする。
 - **依存最小**: 標準ライブラリ（`json`, `argparse`, `re`, `urllib`, `pathlib`,
   `datetime`）で実装できる範囲を基本とする。外部依存を足す場合は理由を明記する。
-- 5,212 件規模では単一 `books.json` で十分。件数増加やモバイル初期ロードを考慮し、
-  **分割ロード／軽量サマリ＋詳細遅延読み込み**へ切り替えられる出力構造にしておく
-  （`site` の仮想スクロール方針と対）。
+- 1 分類あたり最大 1,000 件なら単一ファイルで十分。件数増加やモバイル初期ロードを
+  考慮し、**分割ロード／軽量サマリ＋詳細遅延読み込み**へ切り替えられる出力構造に
+  しておく（`site` の仮想スクロール方針と対）。
 - enrich（ネットワーク）と normalize/sort（純変換）を分離し、CI やオフラインで
   後者だけを検証できるようにする。
 
@@ -403,19 +403,16 @@ python build/build.py --renormalize-inplace
 ```
 build/
 ├── README.md   # 本書（要件定義 ＋ 実行結果）
-└── build.py    # 実装済み。source/*.json → site/data/*.json
+└── build.py    # 実装済み。.cache/ndc/ → site/data/ndc/ ほか
                 # 表紙取得（段階3）も enrich_covers() として実装済み
+                # 生成モードの指定は必須（既定モードは持たない）
 ```
 
 実行イメージ:
 
 ```bash
-# 既定データ用（一覧のみ・表紙取得なし＝オフラインで完結）
-python build/build.py --source source/日本近代文学.json --out site/data/
-
-# 表紙取得（OpenBD）も行う
-python build/build.py --source source/日本近代文学.json --out site/data/ \
-                      --covers --cache .cache/openbd/
+# NDC 棚データ（一覧のみ・表紙取得なし＝オフラインで完結）
+python build/build.py --ndc .cache/ndc/ --ndc-out site/data/ndc/
 
 # NDC 棚データを生成しつつ表紙も付与（.cache/ndc/ の生レスポンスが必要）
 python build/build.py --ndc .cache/ndc/ --ndc-out site/data/ndc/ \
@@ -429,7 +426,7 @@ python build/build.py --ndc-covers-inplace --ndc-out site/data/ndc/ \
 
 # 著者正規化の規則（役割語辞書など）を直したときに、生成済みの棚データへ
 # 再適用する（NDC 生キャッシュ不要。creators/contribKind だけをその場更新）
-python build/build.py --renormalize-inplace --out site/data/ --ndc-out site/data/ndc/
+python build/build.py --renormalize-inplace --ndc-out site/data/ndc/
 
 # NCID→3桁NDC の逆引きシャードを生成（NDC 生キャッシュ不要。
 # site/data/ndc/<3桁>.json から site/data/ndc/rev/<XX>.json を導出。
@@ -437,27 +434,24 @@ python build/build.py --renormalize-inplace --out site/data/ --ndc-out site/data
 python build/build.py --ndc-rev --ndc-out site/data/ndc/
 
 # 件名・著者名を含めた詳細検索用も生成（後回し / fetch の詳細レコードを合流）
-python build/build.py --source source/日本近代文学.json \
-                      --details .cache/details/ --out site/data/
+python build/build.py --details .cache/details/
 ```
 
 想定オプション（暫定）:
 
 | オプション | 役割 | 既定 |
 |---|---|---|
-| `--source PATH` | 入力 OpenSearch JSON | `source/日本近代文学.json` |
-| `--out DIR` | 出力ディレクトリ | `site/data/` |
-| `--covers` | OpenBD で表紙取得（段階 3）を有効化 | 無効（全件 `coverUrl: null`） |
 | `--cache DIR` | OpenBD キャッシュ先 | `.cache/openbd/` |
-| `--pretty` | 整形出力（デバッグ用） | 無効（最小サイズ） |
-| `--limit N` | 先頭 N 件のみ処理（動作テスト用） | 無効（全件） |
 | `--ndc [DIR]` | NDC 棚データ＋マスタの生成モード（実装済み。→「今後必要な作業 #2」） | 無効（DIR 省略時 `.cache/ndc/`） |
 | `--ndc-out DIR` | NDC 棚データの出力先 | `site/data/ndc/` |
 | `--ndc-max N` | NDC 棚 1 分類あたりの件数上限（所蔵館数上位を優先して切り詰め） | `1000`（全分類の件数実測にもとづき確定・2026-07-14） |
 | `--ndc-covers` | NDC 棚生成時に OpenBD 表紙も付与（`--ndc` と併用） | 無効 |
 | `--ndc-covers-inplace` | 既存 `site/data/ndc/*.json` に OpenBD 表紙を後付け（NDC 生キャッシュ不要） | 無効 |
-| `--renormalize-inplace` | 既存 `site/data/books.json`・`site/data/ndc/*.json` の `creators`/`contribKind` を `creatorRaw` から再計算（NDC 生キャッシュ不要。→ 下記「著者正規化の再適用」） | 無効 |
+| `--renormalize-inplace` | 既存 `site/data/ndc/*.json` の `creators`/`contribKind` を `creatorRaw` から再計算（NDC 生キャッシュ不要。→ 上記「著者正規化の再適用」） | 無効 |
 | `--ndc-rev` | NCID→3桁NDC の逆引きシャード生成（`site/data/ndc/` → 同 `rev/`。NDC 生キャッシュ不要。→ [docs/detail-related-books.md](../docs/detail-related-books.md) D1） | 無効 |
+| `--search-index` | 収録データ検索のコーパス生成（`site/data/ndc/` → `site/data/search/`。→「今後必要な作業 #6」） | 無効 |
+| `--search-out DIR` | 検索コーパスの出力先 | `site/data/search/` |
+| `--search-fetch-limit K` | 書誌本体を解決する分類ファイルの取得上限 | `30` |
 | `--cover-batch N` | OpenBD 1 リクエストの ISBN 数（NDC 一括取得の既定） | `1000` |
 | `--cover-interval SEC` | OpenBD リクエスト間隔・秒（API 提供元へのマナー） | `1.0` |
 | `--details DIR` | 詳細検索索引の生成（後回し） | 無効 |
@@ -466,22 +460,24 @@ python build/build.py --source source/日本近代文学.json \
 
 ## 受け入れ条件（このフェーズの完了定義）
 
-1. `python build/build.py`（表紙なし）で `site/data/books.json` が生成される。
-2. レコード件数が入力の `@graph[0].items` と一致する（5,212 件）。
+1. `python build/build.py --ndc`（表紙なし）で `site/data/ndc/<記号>.json` が生成される。
+2. レコード件数が入力の `@graph[0].items` と一致する（件数上限 `--ndc-max` 未満の分類）。
 3. 配列が `ownerCount` 降順・同値は `ncid` 昇順で整列している。
 4. 各レコードがスキーマの全キーを持ち、欠損は `[]`/`null` で明示されている。
 5. `year`/`decade` が不完全日付（`197-` 等）で破綻せず、規則どおり `null`/導出になる。
 6. ISBN から `urn:` 接頭辞が除かれ、ISSN が混入していない。
 7. 同一入力で 2 回実行して**バイト一致**する（冪等）。
-8. `--covers` 実行時、キャッシュにより 2 回目はネットワーク再取得が起きない。
+8. 表紙付与の実行時、キャッシュにより 2 回目はネットワーク再取得が起きない。
 
-→ 全件（5,212 件）で上記 1〜8 をすべて確認済み。`site/data/books.json` を生成済み。
+→ 試作データ全件（5,212 件）で上記 1〜8 を確認済み（2026-06-27）。同一ロジックで
+生成する NDC 棚データ（全 1,110 分類）も同じ条件を満たす。
 
 ---
 
 ## 実行結果（全件・実測 2026-06-27）
 
-`python build/build.py --covers` を `source/日本近代文学.json` 全件に対して実行した結果。
+試作データ（`source/日本近代文学.json`・5,212 件。**2026-07-28 に削除済み**）の全件へ
+表紙付与つきビルドを実行した当時の記録。表紙取得率の見積もり根拠として残す。
 
 | 指標 | 値 |
 |---|---:|
@@ -489,7 +485,7 @@ python build/build.py --source source/日本近代文学.json \
 | ISBN 保有 | 2,794（53.6%） |
 | **書影取得（coverUrl 非 null）** | **221（全体の 4.2% / ISBN 保有中 7.9%）** |
 | プレースホルダー（coverUrl = null） | 4,991（95.8%） |
-| 出力サイズ（`books.json`） | 約 1.9 MB |
+| 出力サイズ（1 ファイル） | 約 1.9 MB |
 | OpenBD キャッシュ件数（代表 ISBN） | 2,746 |
 | 実行時間（初回・取得あり） | 約 27 秒 |
 | 実行時間（2 回目・全キャッシュ命中） | 約 0.5 秒（ネットワーク再取得なし） |
@@ -503,8 +499,8 @@ python build/build.py --source source/日本近代文学.json \
 - `coverUrl: null` でも `site` は `title`/`creators`/`publishers`/`series` から
   プレースホルダーを描画できるため、表示に支障はない。
 
-> 生データキャッシュ（`.cache/openbd/`）は Git 管理外。成果物 `site/data/books.json`・
-> `site/data/meta.json` のみコミットする。
+> 生データキャッシュ（`.cache/openbd/`）は Git 管理外。成果物 `site/data/ndc/` のみ
+> コミットする（検索コーパス `site/data/search/` もデプロイ時生成で管理外）。
 
 ---
 
@@ -522,7 +518,7 @@ python build/build.py --source source/日本近代文学.json \
     `https://ndlsearch.ndl.go.jp/thumbnail/<ISBN13>.jpg`（ISBN13 前提のため
     10 桁 ISBN は 13 桁へ変換する）。
   - NDL の利用条件（非営利は申請不要・継続利用は申請推奨）を確認し、README の
-    データソース表記に取得元を追記する。`meta.json` に取得元別の件数を記録する。
+    データソース表記に取得元を追記する。`ndc/index.json` に取得元別の件数を記録する。
   - キャッシュ（`.cache/`）は取得元ごとに分け、**冪等・再開可能**の設計を維持する。
   - HEAD/GET で存在確認する際もバッチ間隔・User-Agent・指数バックオフの
     マナーを守る（enrich_covers と同様）。
@@ -537,8 +533,8 @@ python build/build.py --source source/日本近代文学.json \
   が使う分類ごとの静的棚データを生成する。
 - **実装**（`build_ndc()`）:
   - `build.py --ndc [.cache/ndc/]` で、`fetch/ndc_fetch.py` が取得した分類ごとの
-    一覧を読み、既定データと**同一の正規化・整列ロジック（core）**で
-    `site/data/ndc/<分類記号>.json`（`books.json` と同一スキーマ）を生成する。
+    一覧を読み、`server` と**同一の正規化・整列ロジック（core）**で
+    `site/data/ndc/<分類記号>.json`（動的検索 API の応答と同一スキーマ）を生成する。
   - 1 分類あたりの**件数上限 `--ndc-max`**（既定 1,000 件。全 1,110 分類の
     件数実測〈延べ 1,869 万件〉にもとづき確定）を設け、超過分は所蔵館数上位を
     優先して切り詰める。
@@ -559,18 +555,17 @@ python build/build.py --source source/日本近代文学.json \
 - **依存**: `fetch/ndc_fetch.py`（[fetch/README.md](../fetch/README.md) A。
   全分類の初期整備手順〈ランブック〉も同書）。
 
-### 3. NDC・既定データの定期更新（P2 #5）
+### 3. NDC 棚データの定期更新（P2 #5）
 
-- **目的**: `source/日本近代文学.json` と `site/data/ndc/` は取得時点のスナップ
-  ショットで、新刊・所蔵数の変化が反映されない。定期的に再取得・再ビルドして
-  鮮度を保つ。
+- **目的**: `site/data/ndc/` は取得時点のスナップショットで、新刊・所蔵数の変化が
+  反映されない。定期的に再取得・再ビルドして鮮度を保つ。
 - **要件**:
   - **当面は手動運用**: 再取得（fetch）→ 再ビルド（build）→ コミットの手順を確立する。
     全分類を一度に更新せず分割（例: 週ごとに 1/4）してよい。
   - 自動化する場合は GitHub Actions の `schedule`（例: 月 1 回）で ①再取得
     → ②build 実行 → ③差分があれば PR を自動作成する（直接 push はしない）。
     ワークフロー追加は CI/CD 変更のためユーザーレビューを必須とする。
-  - `meta.json` / `ndc/index.json` の `generatedAt`・件数で更新を確認できるようにする。
+  - `ndc/index.json` の `generatedAt`・件数・`fetchedAt` で更新を確認できるようにする。
   - 大容量 JSON の更新が Git 履歴を肥大させるため、更新頻度・保存方式は
     docs/site-structure.md「問題点と対処」#5 に従って選定する。
 
@@ -589,7 +584,7 @@ python build/build.py --source source/日本近代文学.json \
 
 正規化ルール（役割語・「ほか/他」判定・年代解析など）の回帰テストは core 側で
 定義する（→ [core/README.md](../core/README.md)）。build 側は「受け入れ条件 1〜8 を
-CI で自動実行する」形で参加する（books.json のスキーマ検証・冪等性チェック）。
+CI で自動実行する」形で参加する（棚データのスキーマ検証・冪等性チェック）。
 
 ### 6. 検索コーパス生成 `--search-index`（P2.5・**実装済み**）
 
@@ -638,4 +633,4 @@ python build/build.py --search-index
 これらは詳細レコード側にしか無いため、`fetch` の出力を入力に合流させて
 `site/data/facets.json` / `details.json` 等として生成する（構成は実装時に確定）。
 一覧から作れる暫定ファセット（出版者・出版年/年代・シリーズ・著者文字列・自由語）は
-`books.json` の項目から `site` 側でも構成できる。
+`books` 配列の項目から `site` 側でも構成できる。

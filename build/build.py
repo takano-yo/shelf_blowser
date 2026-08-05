@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""build.py — source/日本近代文学.json から site/data/books.json を生成する。
+"""build.py — 事前取得した生レスポンスから site/data/ 配下の静的データを生成する。
 
 build/README.md の要件定義に対応した実装。
 処理フロー: load → normalize → (enrich: 表紙) → sort → write
 
 正規化ロジックは core/normalize.py に集約し、API サーバ（server/）と共有する。
-このスクリプトは既定キーワードの「事前ビルド（バッチ）」を担い、生成物
-site/data/books.json は動的検索が使えないときのフォールバック表示にも使われる。
 
---ndc 指定時は NDC 棚データの生成モードになり、fetch/ndc_fetch.py が取得した
-分類ごとの生レスポンス（.cache/ndc/）を同一の正規化・整列ロジックで
-site/data/ndc/<分類記号>.json ＋ NDC マスタ index.json へ出力する
-（docs/site-structure.md「データ設計」）。
+生成モードはいずれかを明示的に指定する（既定モードは無い）:
+  --ndc                 fetch/ndc_fetch.py が取得した分類ごとの生レスポンス
+                        （.cache/ndc/）から site/data/ndc/<分類記号>.json ＋
+                        NDC マスタ index.json を作る（docs/site-structure.md
+                        「データ設計」）。棚データが表示層への唯一の入力。
+  --ndc-covers-inplace  既存の棚データへ OpenBD 表紙を後付けする。
+  --renormalize-inplace 既存の棚データの creators/contribKind を再計算する
+                        （core/normalize.py の正規化規則を直したとき）。
+  --ndc-rev             NCID→3 桁 NDC の逆引きシャードを作る。
+  --search-index        収録データ検索のコーパスを作る。
 
-標準ライブラリのみで動作する（表紙取得 --covers 時のみ urllib でネットワークを使う）。
+標準ライブラリのみで動作する（表紙取得時のみ urllib でネットワークを使う）。
 """
 
 from __future__ import annotations
@@ -36,57 +40,6 @@ from fetch.ndc_fetch import all_codes  # noqa: E402 — NDC 分類記号の一�
 
 
 # ---------------------------------------------------------------------------
-# パイプライン
-# ---------------------------------------------------------------------------
-
-def load_items(source_path):
-    data = json.loads(Path(source_path).read_text(encoding="utf-8"))
-    return data["@graph"][0]["items"]
-
-
-def build(source, out_dir, covers=False, cache=".cache/openbd/",
-          pretty=False, limit=None):
-    items = load_items(source)
-    if limit is not None:
-        items = items[:limit]
-
-    records = [normalize_item(it) for it in items]
-
-    filled = 0
-    if covers:
-        filled = enrich_covers(records, cache)
-
-    # 整列: ownerCount 降順、同値は ncid 昇順（冪等）
-    records.sort(key=lambda r: (-r["ownerCount"], r["ncid"]))
-
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    indent = 2 if pretty else None
-    separators = None if pretty else (",", ":")
-    (out_dir / "books.json").write_text(
-        json.dumps(records, ensure_ascii=False, indent=indent,
-                   separators=separators),
-        encoding="utf-8",
-    )
-
-    with_isbn = sum(1 for r in records if r["isbn"])
-    meta = {
-        "generatedAt": _dt.datetime.now(_dt.timezone.utc)
-        .replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-        "sourceFile": str(source),
-        "total": len(records),
-        "withIsbn": with_isbn,
-        "withCover": filled,
-        "sort": "ownerCount desc, ncid asc",
-    }
-    (out_dir / "meta.json").write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    return records, meta
-
-
-# ---------------------------------------------------------------------------
 # NDC 棚データの生成（--ndc）
 # ---------------------------------------------------------------------------
 
@@ -95,7 +48,7 @@ def build_ndc(cache_dir, out_dir, max_records=1000, covers=False,
               cover_interval=1.0):
     """`.cache/ndc/` の生レスポンスから NDC 棚データ＋マスタ index.json を生成する。
 
-    - 棚データ `<分類記号>.json` は books.json と同一スキーマ・同一整列
+    - 棚データ `<分類記号>.json` は動的検索 API の応答と同一スキーマ・同一整列
       （ownerCount 降順・同値 ncid 昇順）。max_records 超過分は所蔵館数上位を
       優先して切り詰める（docs/site-structure.md 問題点と対処 #3）。
     - index.json は全 1,110 分類の { code, label, count, hasData } ほかを持つ。
@@ -136,7 +89,7 @@ def build_ndc(cache_dir, out_dir, max_records=1000, covers=False,
             records = records[:max_records]
             entry["count"] = total_results(data)
             entry["fetchedAt"] = fetched_at(data)
-            # 表紙付与（OpenBD）。ISBN 単位キャッシュを books.json と共有するため、
+            # 表紙付与（OpenBD）。ISBN 単位のキャッシュを共有するため、
             # 分類をまたいで重複する ISBN は一度しか問い合わせない。
             if covers and records:
                 total_covers += enrich_covers(
@@ -168,7 +121,7 @@ def build_ndc(cache_dir, out_dir, max_records=1000, covers=False,
             "url": "https://ci.nii.ac.jp/books/",
             "license": "CC BY 4.0",
         },
-        # 表紙画像の出典（books.json と同じく OpenBD）。
+        # 表紙画像の出典（OpenBD）。
         "coverSource": {
             "name": "openBD",
             "url": "https://openbd.jp/",
@@ -192,7 +145,7 @@ def enrich_ndc_covers_inplace(ndc_out, cache=".cache/openbd/",
     棚データを作り直せない。一方 `site/data/ndc/*.json` はコミット済みの成果物
     なので、そこへ表紙だけを後付けできるようにする。棚を 1 ファイルずつ読み込み、
     `enrich_covers` で表紙を引いて（`.cache/openbd/` に ISBN 単位で永続化。分類を
-    またぐ重複 ISBN・books.json との重複は最初の 1 回だけ問い合わせ、以降は
+    またぐ重複 ISBN は最初の 1 回だけ問い合わせ、以降は
     キャッシュから解決）書き戻す。冪等（棚の並び・スキーマは変えず coverUrl のみ更新）。
     """
     ndc_out = Path(ndc_out)
@@ -228,13 +181,12 @@ def enrich_ndc_covers_inplace(ndc_out, cache=".cache/openbd/",
     return len(code_files), filled
 
 
-def renormalize_inplace(out_dir, ndc_out):
+def renormalize_inplace(ndc_out):
     """コミット済み棚データの `creators` / `contribKind` を再計算する（その場更新）。
 
     著者正規化の規則（`core/normalize.py` の役割語辞書など）を直したとき、
-    生成済みの `site/data/books.json`・`site/data/ndc/<記号>.json` は古い規則の
-    まま残る。既定データは `source/` から再ビルドできるが、NDC 棚の生レスポンス
-    （`.cache/ndc/`）はリポジトリ管理外なので棚を作り直せない
+    生成済みの `site/data/ndc/<記号>.json` は古い規則のまま残る。NDC 棚の生
+    レスポンス（`.cache/ndc/`）はリポジトリ管理外なので棚を作り直せない
     （`--ndc-covers-inplace` と同じ事情）。
 
     `creators` / `contribKind` は原文 `creatorRaw` だけから決まる純粋関数の出力
@@ -243,12 +195,8 @@ def renormalize_inplace(out_dir, ndc_out):
 
     差分が出たファイルだけ書き戻す（＝冪等。2 回目は 0 ファイル更新）。
     """
-    targets = []
-    books = Path(out_dir) / "books.json"
-    if books.is_file():
-        targets.append(books)
-    targets += sorted(p for p in Path(ndc_out).glob("*.json")
-                      if p.name != "index.json")
+    targets = sorted(p for p in Path(ndc_out).glob("*.json")
+                     if p.name != "index.json")
 
     files_changed = recs_changed = 0
     # 棚を 1 ファイルずつ処理する（全棚を同時に展開しない＝メモリ安全）。
@@ -429,17 +377,11 @@ def build_search_index(ndc_dir, out_dir, max_results=1000, fetch_limit=30):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description="source 一覧 → site/data/books.json")
-    p.add_argument("--source", default="source/日本近代文学.json",
-                   help="入力 OpenSearch JSON")
-    p.add_argument("--out", default="site/data/", help="出力ディレクトリ")
-    p.add_argument("--covers", action="store_true",
-                   help="OpenBD で表紙取得（段階3）を有効化")
+    p = argparse.ArgumentParser(
+        description="事前取得した生レスポンス → site/data/ の静的データ"
+                    "（生成モードの指定は必須）")
     p.add_argument("--cache", default=".cache/openbd/",
                    help="OpenBD キャッシュ先")
-    p.add_argument("--pretty", action="store_true", help="整形出力（デバッグ用）")
-    p.add_argument("--limit", type=int, default=None,
-                   help="先頭 N 件のみ処理（動作テスト用）")
     p.add_argument("--ndc", nargs="?", const=".cache/ndc/", default=None,
                    metavar="CACHE_DIR",
                    help="NDC 棚データの生成モード（fetch/ndc_fetch.py の出力を"
@@ -455,9 +397,9 @@ def main(argv=None):
                    help="既存 site/data/ndc/*.json に OpenBD 表紙を後付けする"
                         "（NDC 生キャッシュ不要。--ndc-out を対象に更新）")
     p.add_argument("--renormalize-inplace", action="store_true",
-                   help="既存 site/data/books.json・site/data/ndc/*.json の "
-                        "creators/contribKind を creatorRaw から再計算して"
-                        "その場更新する（正規化規則を直したとき用。生キャッシュ不要）")
+                   help="既存 site/data/ndc/*.json の creators/contribKind を "
+                        "creatorRaw から再計算してその場更新する"
+                        "（正規化規則を直したとき用。生キャッシュ不要）")
     p.add_argument("--ndc-rev", action="store_true",
                    help="NCID→3桁NDC の逆引きシャードを生成する"
                         "（site/data/ndc/ → site/data/ndc/rev/。"
@@ -477,7 +419,7 @@ def main(argv=None):
     args = p.parse_args(argv)
 
     if args.renormalize_inplace:
-        scanned, changed, recs = renormalize_inplace(args.out, args.ndc_out)
+        scanned, changed, recs = renormalize_inplace(args.ndc_out)
         print(f"著者正規化の再適用（その場更新）: {scanned} ファイル走査"
               f" / 更新 {changed} ファイル・{recs:,} レコード")
         return 0
@@ -523,13 +465,10 @@ def main(argv=None):
               f"（件数上限 {args.ndc_max} 件・表紙 {index.get('withCover', 0)} 件）")
         return 0
 
-    records, meta = build(
-        args.source, args.out, covers=args.covers, cache=args.cache,
-        pretty=args.pretty, limit=args.limit,
-    )
-    print(f"生成: {meta['total']} 件 -> {Path(args.out) / 'books.json'}")
-    print(f"  ISBN 保有: {meta['withIsbn']} 件 / 表紙取得: {meta['withCover']} 件")
-    return 0
+    # 既定モードは持たない（旧「既定キーワード棚」は廃止。棚データは NDC 分類単位）。
+    p.error("生成モードを指定してください"
+            "（--ndc / --ndc-covers-inplace / --renormalize-inplace / "
+            "--ndc-rev / --search-index）")
 
 
 if __name__ == "__main__":

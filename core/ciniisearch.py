@@ -1,15 +1,15 @@
-"""core/ciniisearch.py — CiNii OpenSearch の取得（ライブ／ローカル代役）。
+"""core/ciniisearch.py — CiNii OpenSearch の取得。
 
 動的検索は「検索語 → OpenSearch 取得 → normalize → 整列 → books 配列」で、
-その取得段だけをここに閉じ込める。取得元は 2 系統あり、どちらも
-`items_from_response()` が受け取る同一構造（`@graph[0].items`）を返す:
+その取得段だけをここに閉じ込める。
 
-  1) fetch_live()   … CiNii OpenSearch API を実際に叩く（本番）。
-  2) search_local() … 保存済み OpenSearch JSON をキーワードで絞り込む（オフライン
-                       検証・フォールバック用）。source/*.json は CiNii の実
-                       レスポンスそのものなので、正規化結果はライブと同一になる。
+  - fetch_response() … 生レスポンス全体（totalResults・dc:date 等のメタ込み）。
+  - fetch_live()     … items 配列だけを返す（`@graph[0].items`）。
 
-標準ライブラリのみ。ネットワーク・ファイル I/O はこのモジュールに集約する。
+CiNii へ到達できない環境の代役は、事前取得済みの静的な棚データ
+（`site/data/ndc/<記号>.json`）を読む server 側が担う。
+
+標準ライブラリのみ。ネットワーク I/O はこのモジュールに集約する。
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ import json
 import time
 import urllib.parse
 import urllib.request
-from pathlib import Path
 
 OPENSEARCH_ENDPOINT = "https://ci.nii.ac.jp/books/opensearch/search"
 # 連絡先を含む明示的な UA（CiNii へのマナー）。運用時は連絡先を差し替える。
@@ -28,9 +27,9 @@ USER_AGENT = "shelf_blowser/0.1 (+https://github.com/takano-yo/shelf_blowser)"
 def build_opensearch_url(query=None, count=10000, sortorder=5, clas=None):
     """CiNii OpenSearch のリクエスト URL を組み立てる。
 
-    sortorder=5 は所蔵館数（ownerCount）降順。source/*.json と同じ条件に揃える。
-    count も source/*.json の生成時と同じ 10000（CiNii が実際に持つ件数までしか
-    返らないため、実質「その検索語の全件」を一度の取得で狙う値）に揃える。
+    sortorder=5 は所蔵館数（ownerCount）降順。棚データの整列キーと揃える。
+    count は 10000（CiNii が実際に持つ件数までしか返らないため、実質
+    「その検索語の全件」を一度の取得で狙う値）。
 
     clas は NDC 分類検索（例: "913*"）。上位桁の前方一致は末尾 `*` で指定する
     （source/0.json ＝ clas=0* の実レスポンスで動作確認済み）。query と clas は
@@ -113,36 +112,3 @@ def fetch_live(query, count=10000, sortorder=5, timeout=30, retries=4, clas=None
     data = fetch_response(query, count=count, sortorder=sortorder, clas=clas,
                           timeout=timeout, retries=retries)
     return items_from_response(data)
-
-
-# --- オフライン検証・フォールバック用のローカル絞り込み ---
-
-def _item_haystack(item):
-    """絞り込み対象の文字列（タイトル・著者・出版者）を連結して返す。"""
-    parts = [item.get("title") or "", item.get("dc:creator") or ""]
-    pub = item.get("dc:publisher")
-    if isinstance(pub, list):
-        parts.extend(pub)
-    elif pub:
-        parts.append(pub)
-    return " ".join(parts)
-
-
-def search_local(source_path, query, count=10000):
-    """保存済み OpenSearch JSON を読み、query（空白区切り AND）で items を絞り込む。
-
-    CiNii に到達できない環境での動的パイプライン検証・フォールバック用。
-    query が空なら全件（先頭 count 件）を返す。CiNii の一覧は所蔵館数降順で
-    保存されているため、この順序をそのまま活かす（normalize 側でも再整列する）。
-    """
-    data = json.loads(Path(source_path).read_text(encoding="utf-8"))
-    items = items_from_response(data)
-    terms = [t for t in (query or "").split() if t]
-    if terms:
-        matched = [
-            it for it in items
-            if all(t in _item_haystack(it) for t in terms)
-        ]
-    else:
-        matched = items
-    return matched[:count]

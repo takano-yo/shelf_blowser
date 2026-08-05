@@ -1,7 +1,7 @@
 name: Deploy site to GitHub Pages
 
 # site/ ディレクトリ（build が生成した site/data/*.json を含む静的サイト）を
-# GitHub Pages として公開する。書誌データ（site/data/ndc/・books.json）は
+# GitHub Pages として公開する。書誌データ（site/data/ndc/）は
 # build/build.py で生成済みのものをそのまま配信する。
 #
 # 検索コーパス（site/data/search/）だけは、リポジトリにコミットせず

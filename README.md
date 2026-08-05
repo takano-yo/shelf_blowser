@@ -4,7 +4,8 @@ CiNii Books API で取得した学術書の書誌データを **本棚のよう�
 図書館の書架で行うようなブラウジング（請求記号順に棚を眺め、隣接する関連書に
 偶然出会う体験）を Web で再現する学術検索支援アプリ。
 
-試作版として **日本近代文学** 分野を既定データとする。
+棚は **NDC（日本十進分類法）の分類ごと**に用意し、スタートページの分類ナビまたは
+検索から入る。
 
 > **データソース**: 本アプリは [CiNii Books](https://ci.nii.ac.jp/books/) が提供するデータを
 > [クリエイティブ・コモンズ 表示 4.0 国際ライセンス（CC BY 4.0）](https://creativecommons.org/licenses/by/4.0/deed.ja)
@@ -39,65 +40,62 @@ CiNii の通常検索では失われる「棚を眺めて歩く」ブラウジ�
 
 ---
 
-## アーキテクチャ（静的既定 ＋ 動的検索のハイブリッド）
+## アーキテクチャ（静的な分類棚 ＋ 動的検索のハイブリッド）
 
-本アプリは **表示用データ（`books.json`）のスキーマを唯一の契約**とし、その
-`books.json` を **複数の経路**で用意する。**表示層（`site/`）はどの経路から
-来た `books.json` でもそのまま描画できる**（= 表示層を一切変えずに経路を足せる）。
+本アプリは **表示用データ（`books` 配列）のスキーマを唯一の契約**とし、その
+`books` 配列を **複数の経路**で用意する。**表示層（`site/`）はどの経路から
+来た `books` 配列でもそのまま描画できる**（= 表示層を一切変えずに経路を足せる）。
 
-### ページ構成（計画・P2）
+### ページ構成
 
-サイトは **スタートページ（入口）→ トップページ（本棚ページ）** の 2 ページ構成へ
-変更する。スタートページ（`site/index.html`・新規）で検索語または NDC 分類を指定し、
-本棚ページ（`site/shelf.html`・現行 index.html を移設）が
-`?q=<語>` / `?ndc=<分類記号>` を受け取って棚を作る。クエリなしは既定データの棚
-（後方互換）。詳細は [docs/site-structure.md](docs/site-structure.md)。
+サイトは **スタートページ（入口）→ 本棚ページ** の 2 ページ構成。
+スタートページ（`site/index.html`）で検索語または NDC 分類を指定し、
+本棚ページ（`site/shelf.html`）が `?q=<語>` / `?ndc=<分類記号>` を受け取って棚を作る。
+**既定棚は持たない**ため、どちらも無いときは棚を作らずスタートページへ戻る導線を出す。
+詳細は [docs/site-structure.md](docs/site-structure.md)。
 
 ### データ経路
 
 ```
-【A. 静的な既定表示】オフラインの事前ビルド。サーバ無しでも本棚が見える。
+【A. NDC 分類の静的棚】分類ごとの事前取得。サーバ無しでも分類棚が見える。
 
-  source/日本近代文学.json         ← CiNii OpenSearch の実レスポンス（保存済み）
+  fetch/ndc_fetch.py（バッチ）     ← CiNii の分類検索で最大 1,110 分類を取得・キャッシュ
         │
         ▼
-  build/build.py (core を使用)     ← 正規化・ownerCount 降順・(任意)表紙付与
+  build/build.py --ndc (core を使用) ← 正規化・ownerCount 降順・(任意)表紙付与
         │
         ▼
-  site/data/books.json             ← 既定データ（動的検索が無い時のフォールバック）
+  site/data/ndc/<記号>.json ＋ index.json ← 本棚ページが ?ndc=<記号> で読み込む。
+                                       リポジトリに保存し定期更新（詳細は docs/site-structure.md）
 
 
-【B. 動的な検索表示】検索語のたびに取得＆再処理する。
+【B. 収録データ検索（サーバ不要）】A の棚データから作った検索コーパスを引く。
+
+  build/build.py --search-index    ← site/data/ndc/ → site/data/search/（Pages デプロイ時に生成）
+        │
+        ▼
+  site/js/search.js が類（1 桁）内を検索 → 書誌本体は site/data/ndc/<記号>.json から解決
+
+
+【C. 動的な検索表示（CiNii API 検索）】検索語のたびに取得＆再処理する。
 
   検索窓に入力 → site/js/app.js が /api/search?q=語 を fetch
         │
         ▼
   server/app.py                    ← ① キャッシュ確認
         │  ② core.ciniisearch で CiNii OpenSearch を取得
-        │     （CiNii へ到達できない環境では source をローカル絞り込み）
+        │     （CiNii へ到達できない環境では ndc 指定時のみ A の棚データを絞り込み）
         │  ③ core.normalize で正規化・整列（build と同一ロジック）
         ▼
-  books 配列（books.json と同一スキーマ）を JSON で返す
+  books 配列（棚データと同一スキーマ）を JSON で返す
         │
         ▼
   site/js/app.js が buildShelfItems() に渡して本棚を再描画（表示層は無改修）
-
-
-【C. NDC 分類の静的棚（P2・取得バッチ/ビルドは実装済み）】分類ごとの事前取得。サーバ無しでも分類棚が見える。
-
-  fetch/ndc_fetch.py（バッチ）     ← CiNii の分類検索で最大 1,110 分類を取得・キャッシュ
-        │
-        ▼
-  build/build.py --ndc (core を使用) ← 正規化・整列（A と同一ロジック）
-        │
-        ▼
-  site/data/ndc/<記号>.json ＋ index.json ← 本棚ページが ?ndc=<記号> で読み込む。
-                                       リポジトリに保存し定期更新（詳細は docs/site-structure.md）
 ```
 
 **設計の要点**: `build`（バッチ）と `server`（オンデマンド）は、正規化・整列の
 中核ロジックを `core/` として**共有**する。同じ OpenSearch レスポンスからは
-どちらの経路でも**同一の `books.json`** が得られるため、二重実装が無く、
+どちらの経路でも**同一の `books` 配列**が得られるため、二重実装が無く、
 表示結果も一致する。
 
 ### モジュール構成
@@ -105,9 +103,9 @@ CiNii の通常検索では失われる「棚を眺めて歩く」ブラウジ�
 | モジュール | 役割 | 使うデータ |
 |---|---|---|
 | [`core/`](core/README.md) | 正規化・整列・CiNii 取得の中核ロジック（`build`/`server` 共有） | OpenSearch レスポンス |
-| [`build/`](build/README.md) | 既定データの事前ビルド（バッチ）。`site/data/*.json` を生成 | `source/*.json` ＋（任意）OpenBD |
-| [`server/`](server/README.md) | 動的検索の API。`/api/search` を提供し `site/` も配信 | CiNii OpenSearch（ライブ）／`source`（代役） |
-| [`site/`](site/README.md) | スタートページ（計画）＋本棚 UI・検索窓・詳細オーバーレイ（バニラ JS・ビルド工程なし） | `books.json`（静的 or API）・`ndc/*.json`（計画） |
+| [`build/`](build/README.md) | 静的データの事前ビルド（バッチ）。`site/data/ndc/`・検索コーパスを生成 | NDC 分類ごとの生レスポンス ＋（任意）OpenBD |
+| [`server/`](server/README.md) | 動的検索の API。`/api/search` を提供し `site/` も配信 | CiNii OpenSearch（ライブ）／`site/data/ndc/`（分類内検索の代役） |
+| [`site/`](site/README.md) | スタートページ＋本棚 UI・検索窓・詳細オーバーレイ（バニラ JS・ビルド工程なし） | `ndc/*.json`（静的）・検索コーパス・API 応答 |
 | [`fetch/`](fetch/README.md) | （バッチ）NDC 分類ごとの一覧取得（`ndc_fetch.py`・実装済み）／詳細書誌の取得（将来） | 分類検索 OpenSearch・一件ごとの詳細 API |
 
 ### ディレクトリ
@@ -118,17 +116,17 @@ shelf_blowser/
 │   ├── normalize.py          #   OpenSearch item → books レコード（正規化・整列）
 │   └── ciniisearch.py        #   CiNii OpenSearch 取得（ライブ／ローカル代役）
 ├── build/
-│   └── build.py              # 既定データの事前ビルド（core を使用）。--ndc は計画
+│   └── build.py              # 静的データの事前ビルド（core を使用）
 ├── server/
 │   └── app.py                # 動的検索 API ＋ 静的配信（core を使用）
-├── source/日本近代文学.json    # 既定キーワードの保存済み OpenSearch レスポンス
+├── source/0.json             # 分類検索（clas=0*）の実レスポンス（仕様確認用の記録）
 ├── site/                     # 表示層（静的サイト）
-│   ├── index.html            #   現状は本棚。P2 でスタートページ化（本棚は shelf.html へ移設）
+│   ├── index.html            #   スタートページ（検索窓＋NDC 分類ナビ）
+│   ├── shelf.html            #   本棚ページ（?ndc= / ?q= で棚を作る）
 │   ├── css/styles.css
-│   ├── js/app.js             #   初期＝静的 books.json / 検索＝API。どちらも同一処理
+│   ├── js/app.js             #   静的な棚データ / 収録データ検索 / API。どれも同一処理
 │   └── data/
-│       ├── books.json        #   build の出力（既定表示・フォールバック）
-│       └── ndc/              #   （P2）NDC 分類ごとの棚データ＋マスタ index.json（パイロット: 分類 0）
+│       └── ndc/              #   NDC 分類ごとの棚データ＋マスタ index.json＋逆引き rev/
 ├── fetch/
 │   └── ndc_fetch.py          # バッチ取得（NDC 分類ごとの一覧。将来: 詳細書誌）
 ├── docs/                     # 横断的な要件・レビュー（site-structure.md が最新のページ構成方針）
@@ -139,8 +137,8 @@ shelf_blowser/
 
 ## 表示用データのスキーマ（契約）
 
-`books.json` は **レコードの配列**（`ownerCount` 降順）。静的経路・動的経路の
-どちらもこの形で `site` へ渡す。1 レコードの例:
+`books` 配列は **レコードの配列**（`ownerCount` 降順）。静的経路（`site/data/ndc/<記号>.json`）・
+動的経路（`/api/search` の応答）のどちらもこの形で `site` へ渡す。1 レコードの例:
 
 ```jsonc
 {
@@ -166,36 +164,41 @@ shelf_blowser/
 
 ## ローカルでの実行
 
-### 1. 既定データの静的表示のみ（サーバ不要）
+### 1. 静的表示のみ（サーバ不要）
 
-`site/` を任意の静的サーバで開くだけ。`build` を再実行してデータを作り直すには:
+`site/` を任意の静的サーバで開くだけ。NDC 分類棚と収録データ検索はこれだけで動く。
+棚データを作り直すには（`fetch/ndc_fetch.py` の生キャッシュが必要）:
 
 ```bash
-# 表紙取得なし（オフラインで完結・全件 coverUrl:null）
-python build/build.py --source source/日本近代文学.json --out site/data/
+# NDC 棚データ＋マスタ index.json（表紙なし・オフラインで完結）
+python build/build.py --ndc
 
 # OpenBD で表紙も取得
-python build/build.py --source source/日本近代文学.json --out site/data/ --covers
+python build/build.py --ndc --ndc-covers
+
+# 収録データ検索のコーパス（棚データからのみ生成。Pages デプロイ時にも自動生成）
+python build/build.py --search-index
 ```
 
 ### 2. 動的検索を含めて動かす（API サーバ）
 
 ```bash
-# 既定: ローカル source を検索語で絞り込む（CiNii に到達できない環境でも動く）
+# 既定: CiNii OpenSearch を実際に叩く
 python server/app.py --port 8000
 #   → http://127.0.0.1:8000/ をブラウザで開き、検索窓に語を入れる
 
-# 本番: CiNii OpenSearch を実際に叩く
-python server/app.py --port 8000 --live
+# CiNii に到達できない環境: 分類内検索だけを静的な site/data/ndc/ で応答する
+python server/app.py --port 8000 --offline
 ```
 
 `server/app.py` は `site/` を同一オリジンで配信しつつ `/api/search?q=語` を提供する。
 検索結果は検索語ごとに `server/cache/` へキャッシュし、同じ語の再取得を避ける
 （Git 管理外・冪等・再生成可能）。
 
-> **注**: 初期ロードは常に静的な `site/data/books.json` を表示するため、API サーバが
-> 無くても（または落ちても）既定の本棚は見える（グレースフルデグレード）。検索した
-> ときだけ API を叩く。
+> **注**: NDC 分類棚（`?ndc=<記号>`）と収録データ検索は静的ファイルだけで完結する
+> ため、API サーバが無くても（または落ちても）本棚は見える（グレースフルデグレード）。
+> CiNii API 検索を選んだときだけ API を叩き、未稼働時はその旨を案内する
+> （**特定の棚へのフォールバックはしない**）。
 
 ---
 

@@ -68,7 +68,8 @@
              その階層（選択前）へ戻る。 -->
         <div class="ndc-nav__controls" id="ndc-controls">
           <nav class="ndc-nav__crumbs" id="ndc-crumbs" aria-label="選択中の分類"></nav>
-          <a class="ndc-nav__view" id="ndc-view" href="shelf.html"></a>
+          <!-- href は分類を選んだ時点で JS が入れる（未選択のうちは遷移先が無い）。 -->
+          <a class="ndc-nav__view" id="ndc-view"></a>
         </div>
         <div class="ndc-nav__viewport" id="ndc-viewport">
           <p class="ndc-nav__loading" id="ndc-loading">分類データを読み込み中…</p>
@@ -81,6 +82,6 @@
     </section>
   </main>
 
-  <script src="js/start.js?v=20260725b" defer></script>
+  <script src="js/start.js?v=20260728a" defer></script>
 </body>
 </html>

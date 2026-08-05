@@ -1,16 +1,16 @@
 'use strict';
 
 /* shelf_blowser — 本棚ビュー
- * build が出力した site/data/books.json（ownerCount 降順）を読み込み、
- * シリーズ（親書誌）でまとめて表紙を本棚状に描画する。
- * 詳細検索・件名/分類は現フェーズ対象外（books.json 内の項目のみで表示）。
+ * NDC 分類棚（data/ndc/<記号>.json・ownerCount 降順）または検索結果の books 配列を
+ * 読み込み、シリーズ（親書誌）でまとめて表紙を本棚状に描画する。
+ * 詳細検索・件名/分類は現フェーズ対象外（books 配列内の項目のみで表示）。
+ * 棚は必ず「?ndc=<記号>」または検索の結果として作る。既定棚は持たないため、
+ * どちらも無い（または棚を出せない）ときはスタートページへ戻る導線だけを示す。
  */
-
-const DATA_URL = 'data/books.json';
 
 // 動的検索 API のエンドポイント（server/app.py が提供）。同一オリジン配信を既定とし、
 // 別オリジンのバックエンド（例: GitHub Pages のフロント + 別ホストの API）に置く
-// 場合はここを絶対 URL に変えるだけでよい。返る JSON は books.json と同一スキーマ。
+// 場合はここを絶対 URL に変えるだけでよい。返る JSON は棚データと同一スキーマ。
 const SEARCH_URL = 'api/search';
 
 // NDC 分類棚の静的データ（build --ndc の出力）。?ndc=<記号> のとき読み込む。
@@ -1439,8 +1439,8 @@ function bindEvents() {
     els.groupToggle.addEventListener('change', (e) => toggleSeriesUngroup(!e.target.checked));
   }
 
-  // 検索窓: 入力語で API（server/app.py）を叩き、返ってきた books（books.json と
-  // 同一スキーマ）で棚を作り直す。空送信は既定データ（data/books.json）へ戻す。
+  // 検索窓: 入力語で API（server/app.py）を叩き、返ってきた books（棚データと
+  // 同一スキーマ）で棚を作り直す。空送信は NDC 棚なら分類全体へ戻す。
   els.searchForm.addEventListener('submit', (e) => {
     e.preventDefault();
     runSearch(els.searchInput ? els.searchInput.value.trim() : '');
@@ -1489,7 +1489,7 @@ function bindEvents() {
 
 /* ---------- 起動・データ反映 ---------- */
 
-/* books 配列（build の books.json / 動的検索 API いずれも同一スキーマ）を棚へ反映する
+/* books 配列（静的な NDC 棚データ / 収録データ検索 / 動的検索 API いずれも同一スキーマ）を棚へ反映する
  * 共通経路。初期ロードと検索の両方から呼ぶ。表示は「すべて」タブ・先頭から始める。
  * 並べ替えモード（sortMode）は現在の選択を引き継ぐ。query は「すべて」タブの混在
  * 順を決める乱数シードの元（既定表示なら空文字）。 */
@@ -1597,7 +1597,7 @@ function renderNdcHeading(code, index) {
 
   els.ndcHeading.hidden = false;
   document.title = `NDC ${code}${label ? ' ' + label : ''} の本棚 — shelf_blowser`;
-  // ヘッダーのサブタイトル（既定データの説明）も NDC 棚の内容へ差し替える。
+  // ヘッダーのサブタイトル（棚の説明）も NDC 棚の内容へ差し替える。
   if (els.subtitle) els.subtitle.textContent = `NDC ${code}${label ? ' ' + label : ''} の本棚`;
 }
 
@@ -1610,7 +1610,7 @@ function hideNdcHeading() {
 /* ---------- クライアント側絞り込み（NDC 棚内検索のフォールバック） ---------- */
 
 /* 1 レコードの検索対象文字列（タイトル・著者・出版社・シリーズ名）を連結して返す。
- * server のローカル代役（core.ciniisearch.search_local）と同じ思想。 */
+ * server 側の静的 NDC データ絞り込み（server/app.py の _book_haystack）と同じ対象。 */
 function bookHaystack(b) {
   const parts = [b.title || '', b.creatorRaw || ''];
   if (b.creators) parts.push(...b.creators);
@@ -1710,9 +1710,10 @@ async function applyUrlState(isInitial) {
       } else if (st.q) {
         // ndc 無し＋q。data モードは類が必要なため通常ここには来ない（syncUrl が
         // data 検索に必ず ndc を付ける）が、外部リンク等で来た場合は api として扱う。
-        await searchGlobal(st.q, { fallbackToDefault: true });
+        await searchGlobal(st.q, { guideIfDown: true });
       } else {
-        await loadDefault();
+        // 棚の指定も検索語も無い。既定棚は持たないので入口へ戻る案内を出す。
+        showNoShelf('表示する棚が指定されていません。');
       }
       // setBooks はタブを「すべて」に戻すため、URL のタブへ切り替え直す。
       // 読み込み失敗などで対象タブが空のときはメッセージを消さないよう何もしない。
@@ -1734,24 +1735,36 @@ async function applyUrlState(isInitial) {
 
 /* ---------- データの読み込み・検索 ---------- */
 
-/* 既定データ（静的 data/books.json）を読み込んで表示する。動的検索サーバが無くても
- * この経路だけで従来どおり本棚が見える（グレースフルデグレード）。 */
-async function loadDefault(opts) {
-  els.shelf.setAttribute('aria-busy', 'true');
-  if (!(opts && opts.keepNotice)) hideNotice();
+/* 棚を作れない（棚の指定が無い・棚データが読めない・検索できない）ときの案内。
+ * 特定の分類へ勝手にフォールバックはせず、棚を空にしたうえで入口（スタートページの
+ * 分類ナビ）へ戻る導線と、その場で検索し直す案内だけを示す。lead は状況の説明。 */
+function showNoShelf(lead) {
+  currentBooks = [];
+  ndcBooks = null;
+  tabItems = { all: [], personal: [], editorial: [], series: [] };
+  hideCoverDetail();
+  hideNotice(); // 直前の検索範囲表示などが棚だけ消えて残らないようにする
+  // タブの見た目も「すべて」に戻す（setBooks と同じ扱い。棚が空なので選択は無意味）。
+  activeTab = 'all';
+  seriesUngrouped = false;
+  els.tabs.querySelectorAll('.tab').forEach((b) => {
+    const on = b.dataset.tab === 'all';
+    b.classList.toggle('is-active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  if (els.seriesToggle) els.seriesToggle.hidden = true;
   hideNdcHeading();
-  try {
-    const books = await fetchJson(DATA_URL);
-    setBooks(books, '');
-  } catch (err) {
-    showShelfMessage(`データの読み込みに失敗しました（${escapeHtml(String(err.message || err))}）。<br>build を実行して <code>site/data/books.json</code> を生成してください。`);
-  }
+  // lead は呼び出し側でエスケープ済みの HTML 断片。
+  showShelfMessage(
+    `${lead ? lead + '<br>' : ''}` +
+    '<a href="./">スタートページ</a>で分類を選ぶか、上の検索窓で「類」を選んで検索してください。'
+  );
 }
 
 /* NDC 分類棚を静的データ（data/ndc/<記号>.json）から読み込んで表示する。
  * サーバ不要（GitHub Pages のみで完結）。マスタ index.json から分類名・件数・
- * 取得日・出典を引き、棚上部の見出しに表示する。読めないときは既定データへ
- * フォールバックする（棚を空のまま終わらせない）。 */
+ * 取得日・出典を引き、棚上部の見出しに表示する。読めないときは他の棚へ
+ * フォールバックせず、入口へ戻る案内を出す。 */
 async function loadNdc(code) {
   els.shelf.setAttribute('aria-busy', 'true');
   els.shelf.innerHTML = '<p class="shelf__loading">本棚を読み込み中…</p>';
@@ -1767,16 +1780,13 @@ async function loadNdc(code) {
     setBooks(books, `ndc:${code}`);
   } catch (err) {
     currentNdc = '';
-    ndcBooks = null;
-    hideNdcHeading();
-    showNotice(`NDC 分類「${escapeHtml(code)}」の棚データを読み込めませんでした（${escapeHtml(String(err.message || err))}）。既定の棚を表示します。`);
-    await loadDefault({ keepNotice: true });
+    showNoShelf(`NDC 分類「${escapeHtml(code)}」の棚データを読み込めませんでした（${escapeHtml(String(err.message || err))}）。`);
   }
 }
 
 /* 全体の動的検索。検索語で API を叩き、返った books で棚を作り直す。
- * fallbackToDefault は「?q= 付きで開いたが API が無い」初期表示用の救済で、
- * メッセージ＋既定棚まで落として棚が空のまま終わらないようにする。 */
+ * guideIfDown は「?q= 付きで開いたが API が無い」初期表示用で、他の棚へ
+ * フォールバックせず、収録データ検索へ切り替える手順を案内する。 */
 async function searchGlobal(query, opts) {
   shelfItems = [];
   renderedCount = 0;
@@ -1793,13 +1803,12 @@ async function searchGlobal(query, opts) {
     setBooks(books, query); // 先頭へのスクロールも setBooks 側で行う
   } catch (err) {
     const detail = escapeHtml(String(err.message || err));
-    if (opts && opts.fallbackToDefault) {
-      // 後方互換の ?q= のみ（api 全体検索）でサーバ未稼働。従来の無言フォールバックを
-      // やめ、収録データ検索へ切り替えて類を選ぶよう案内する（docs/site-search.md URL 仕様）。
+    if (opts && opts.guideIfDown) {
+      // 後方互換の ?q= のみ（api 全体検索）でサーバ未稼働。特定の棚へ落とさず、
+      // 収録データ検索へ切り替えて類を選ぶよう案内する（docs/site-search.md URL 仕様）。
       serverUp = false;
       syncModeUi();
-      showNotice(`「${escapeHtml(query)}」の CiNii API 検索に失敗しました（${detail}）。検索サーバが未稼働のため、上の<strong>「検索」を「収録データ検索」に切り替え、「類」を選んで</strong>検索してください。まずは既定の棚を表示しています。`);
-      await loadDefault({ keepNotice: true });
+      showNoShelf(`「${escapeHtml(query)}」の CiNii API 検索に失敗しました（${detail}）。検索サーバが未稼働のため、上の<strong>「検索」を「収録データ検索」に切り替え、「類」を選んで</strong>検索してください。`);
     } else {
       showShelfMessage(`検索に失敗しました（${detail}）。<br>検索用サーバ（<code>server/app.py</code>）が起動しているか確認してください。`);
     }
@@ -1896,7 +1905,7 @@ function selectedMode() {
 function classForDataSearch() {
   if (els.searchClass && els.searchClass.value) return els.searchClass.value;
   if (currentNdc) return currentNdc[0];
-  return '9'; // 既定（サイトの既定棚＝日本近代文学は NDC 9 系）
+  return '0'; // 類セレクタも棚も無い環境向けの保険（先頭の類）
 }
 
 /* 収録データ検索時に URL へ載せる ndc。棚の類と同じなら棚コード（例 913）を保ち、
@@ -1912,7 +1921,7 @@ function showTwoCharNotice() {
 }
 
 /* 検索の入口（検索窓の送信）。モード（収録データ検索 / API 検索）で経路を分ける。
- * 空送信は「検索の解除」: NDC 棚なら分類全体へ、通常は既定データへ戻す。
+ * 空送信は「検索の解除」: NDC 棚なら分類全体へ、棚が無ければ入口へ戻る案内を出す。
  * 最後に URL へ状態を書き込む（戻る/進むで検索の前後を行き来できる）。 */
 async function runSearch(query) {
   query = (query || '').trim();
@@ -1922,7 +1931,7 @@ async function runSearch(query) {
     if (!query) {
       currentQuery = '';
       if (currentNdc) { await loadNdc(currentNdc); }
-      else { await loadDefault(); window.scrollTo(0, 0); }
+      else { showNoShelf('検索を解除しました。'); window.scrollTo(0, 0); }
       syncUrl(true);
       return;
     }
@@ -1942,7 +1951,7 @@ async function runSearch(query) {
     if (!query) restoreNdcShelf();
     else await searchWithinNdc(query);
   } else if (!query) {
-    await loadDefault();
+    showNoShelf('検索を解除しました。');
     window.scrollTo(0, 0);
   } else {
     await searchGlobal(query);
@@ -2002,7 +2011,7 @@ async function init() {
   populateClassSelect(index);
   // 戻る/進むで URL の状態（q / ndc / mode / tab / sort）に追随する。
   window.addEventListener('popstate', () => { applyUrlState(false); });
-  // URL クエリから初期条件を復元して最初の棚を作る（クエリなしは既定データ＝従来どおり）。
+  // URL クエリから初期条件を復元して最初の棚を作る（クエリなしは棚を作らず案内のみ）。
   await applyUrlState(true);
 }
 

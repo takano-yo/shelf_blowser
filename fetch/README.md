@@ -86,8 +86,8 @@ egress ポリシーで CiNii がブロックされるため注意）。
 
 ### 目的
 
-`source/日本近代文学.json` の各 item が持つ `rdfs:seeAlso`（詳細レコード `.json` への
-リンク）をたどり、CiNii Books の詳細書誌を **図書一件ごとに** 取得する。
+棚データ（`site/data/ndc/<記号>.json`）の各書誌が持つ NCID から詳細レコード
+`.json` をたどり、CiNii Books の詳細書誌を **図書一件ごとに** 取得する。
 一覧レベルには無い **件名・典拠著者・分類** はここで初めて取得でき、
 これらは **件名・著者名を含めた詳細検索でのみ必要** になる。
 
@@ -101,7 +101,7 @@ egress ポリシーで CiNii がブロックされるため注意）。
 
 ### 一覧レベルにあるもの / 詳細レコードにしかないもの
 
-| 項目 | source（一覧） | 詳細レコード | 備考 |
+| 項目 | 一覧（OpenSearch） | 詳細レコード | 備考 |
 |---|:---:|:---:|---|
 | タイトル | ✓ | ✓ | |
 | 著者（文字列）`dc:creator` | ✓ | ✓ | 「丸山真男著」のような表記 |
@@ -141,7 +141,7 @@ egress ポリシーで CiNii がブロックされるため注意）。
   途中中断しても続きから取得できるようにする。生データ（キャッシュ）は Git に含めない。
 - **User-Agent**: 連絡先を含む明示的な UA を付ける。
 - **利用規約の確認**: CiNii Books の API 利用条件・出典表示の要件を取得前に確認する。
-- **入力**: `source/*.json` の item 一覧。
+- **入力**: 棚データ（`site/data/ndc/<記号>.json`）の NCID 一覧。
 - **出力**: 詳細レコードのローカルキャッシュ（`build` モジュールが読み取る中間形式）。
 
 ### 想定インターフェース（暫定）
@@ -149,23 +149,24 @@ egress ポリシーで CiNii がブロックされるため注意）。
 ```
 fetch/
 ├── README.md                 # 本書
-├── (計画・P2) ndc_fetch.py    # A: NDC 分類ごとの一覧 → .cache/ndc/ へ取得
-└── (将来・P5) fetch.py 等     # B: source の NCID 一覧 → 詳細 .json をキャッシュ取得
+├── ndc_fetch.py              # A: NDC 分類ごとの一覧 → .cache/ndc/ へ取得（実装済み）
+├── ndc_labels.py             # A: NDC 分類名（JLA 公式 NDC9 版 CC-BY）→ labels.json
+└── (将来・P5) fetch.py 等     # B: 棚データの NCID 一覧 → 詳細 .json をキャッシュ取得
 ```
 
 実行イメージ（将来）:
 
 ```
-python fetch/fetch.py --source source/日本近代文学.json --out .cache/details/
+python fetch/fetch.py --shelves site/data/ndc/ --out .cache/details/
 ```
 
 ### build との関係
 
 `build` は次の入力系統を扱う。
 
-- **既定データ（キーワード棚）用** … `source/日本近代文学.json`（一覧）のみで生成。
-- **NDC 棚用（計画・P2）** … 本モジュール A が取得した `.cache/ndc/` を
-  `build.py --ndc` が正規化して `site/data/ndc/` を生成する。
+- **NDC 棚用（実装済み）** … 本モジュール A が取得した `.cache/ndc/` を
+  `build.py --ndc` が正規化して `site/data/ndc/` を生成する。表示層への唯一の
+  書誌データ入力であり、逆引きシャード・検索コーパスもここから導出する。
 - **詳細検索用（将来・P5）** … 本系統 B が取得した一件ごとの詳細レコードを合流させ、
   件名・典拠著者・分類のファセット／索引を生成する。
 
@@ -190,12 +191,12 @@ python fetch/fetch.py --source source/日本近代文学.json --out .cache/detai
 
 #### 手順 1 — fetch.py の実装
 
-- **CLI**: `python fetch/fetch.py --source source/日本近代文学.json --out .cache/details/`
+- **CLI**: `python fetch/fetch.py --shelves site/data/ndc/ --out .cache/details/`
   - `--limit N`（動作テスト）・`--interval 秒`（既定 1.0）・`--retries N`（既定 4）。
-- **入力**: `source/*.json` の item から NCID 一覧を作る。
+- **入力**: 棚データ（`site/data/ndc/<記号>.json`）から NCID 一覧を作る。
 - **出力**: `.cache/details/<NCID>.json`（1 件 1 ファイル・Git 管理外）。
 - **マナー**（設計方針の具体化）:
-  - 直列取得・リクエスト間隔は既定 1 秒（5,212 件 ≈ 90 分。並列化はしない）。
+  - 直列取得・リクエスト間隔は既定 1 秒（並列化はしない）。
   - 連絡先を含む User-Agent、指数バックオフ（2s→4s→8s→16s）。
   - 取得済み NCID はスキップ（**冪等・中断後の再開可能**）。
   - 失敗 NCID は `failed.txt` 等に記録し、再実行で失敗分だけ再試行できるようにする。
@@ -211,6 +212,6 @@ python fetch/fetch.py --source source/日本近代文学.json --out .cache/detai
 #### 受け入れ条件（実装完了の定義）
 
 1. 中断 → 再実行で取得済み分を再取得しない（キャッシュヒットのログで確認）。
-2. 全件取得後、詳細レコード数が source の NCID 数と一致する（失敗分はリスト化）。
+2. 全件取得後、詳細レコード数が入力のユニーク NCID 数と一致する（失敗分はリスト化）。
 3. 件名・典拠著者・分類が `build` の入力として読める形式で保存されている。
 4. リクエスト間隔・UA・リトライがコード上で確認できる（CiNii へのマナー）。
