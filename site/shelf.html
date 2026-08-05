@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>shelf_blowser — 本棚</title>
   <meta name="description" content="CiNii Books の書誌データを NDC 分類ごとに本棚のように並べてブラウジングする学術検索支援アプリ">
-  <link rel="stylesheet" href="css/styles.css?v=20260724a">
+  <link rel="stylesheet" href="css/styles.css?v=20260805a">
 </head>
 <body>
   <!-- ページ最上部のヘッダ（タイトル/説明）。スクロールには追随せず流れて消える。 -->
@@ -23,40 +23,60 @@
     </div>
   </header>
 
-  <!-- 検索バーのみスクロールに追随して最上部に残る -->
-  <div class="searchbar">
+  <!-- 検索バーのみスクロールに追随して最上部に残る
+       （コンパクト表示では一定量の下スクロールで隠れ、上スクロールで戻る） -->
+  <div class="searchbar" id="searchbar">
     <div class="searchbar__inner">
-      <!-- 表示切り替えタブ（左）。それぞれ該当する書籍だけを所蔵館数順に並べる。 -->
-      <div class="tabs" id="tabs" role="tablist" aria-label="表示する書籍の切り替え">
-        <button class="tab is-active" type="button" role="tab" data-tab="all" aria-selected="true">すべて</button>
-        <button class="tab" type="button" role="tab" data-tab="personal" aria-selected="false">単著/共著</button>
-        <button class="tab" type="button" role="tab" data-tab="editorial" aria-selected="false">編集書</button>
-        <button class="tab" type="button" role="tab" data-tab="series" aria-selected="false">シリーズ</button>
-      </div>
-      <!-- 並べ替え（プルダウン）。タブのすぐ右に置き、表示中タブの並び順を切り替える。 -->
-      <div class="sort">
-        <label class="sort__label" for="sort-select">並べ替え</label>
-        <select class="sort__select" id="sort-select" aria-label="本棚の並べ替え">
-          <option value="default">デフォルト</option>
-          <option value="year-asc">出版年：古い順</option>
-          <option value="year-desc">出版年：新しい順</option>
-        </select>
-      </div>
-      <!-- シリーズまとめ解除スイッチ。シリーズタブのときだけ表示（JS で hidden を制御）。
-           並べ替えの右＝タブのすぐ右隣に置く。ON=シリーズでまとめる（既定）／OFF=各巻に分ける。 -->
-      <div class="series-toggle" id="series-toggle" hidden>
-        <span class="series-toggle__text">シリーズでまとめる</span>
-        <label class="switch" title="オフにするとシリーズを各巻に分けて表示します">
-          <input class="switch__input" type="checkbox" id="series-group-toggle" checked
-                 aria-label="シリーズでまとめる">
-          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-        </label>
+      <!-- タブ・並べ替え・シリーズまとめの操作列。通常表示では display:contents で
+           .searchbar__inner 直下のフレックス項目としてそのまま並び、コンパクト表示では
+           この要素自体が折り返さない（nowrap）1行になる。 -->
+      <div class="toolbar" id="toolbar">
+        <!-- 表示切り替えタブ（左）。それぞれ該当する書籍だけを所蔵館数順に並べる。
+             コンパクト表示では幅を取りすぎるため隠し、下のプルダウンに置き換える。 -->
+        <div class="tabs" id="tabs" role="tablist" aria-label="表示する書籍の切り替え">
+          <button class="tab is-active" type="button" role="tab" data-tab="all" aria-selected="true">すべて</button>
+          <button class="tab" type="button" role="tab" data-tab="personal" aria-selected="false">単著/共著</button>
+          <button class="tab" type="button" role="tab" data-tab="editorial" aria-selected="false">編集書</button>
+          <button class="tab" type="button" role="tab" data-tab="series" aria-selected="false">シリーズ</button>
+        </div>
+        <!-- コンパクト表示専用のタブ（プルダウン）。選択中タブと同じフォルダ型の見た目
+             （上端の水色ライン・上部の角丸・本棚と地続きの下端）を保ったまま、横並びを
+             やめて1個分の幅に収める。上のタブ列とは JS が選択状態を相互に同期する。 -->
+        <div class="tab-select" id="tab-select-wrap">
+          <select class="tab-select__input" id="tab-select" aria-label="表示する書籍の切り替え">
+            <optgroup label="表示する書籍">
+              <option value="all">すべて</option>
+              <option value="personal">単著/共著</option>
+              <option value="editorial">編集書</option>
+              <option value="series">シリーズ</option>
+            </optgroup>
+          </select>
+        </div>
+        <!-- 並べ替え（プルダウン）。タブのすぐ右に置き、表示中タブの並び順を切り替える。 -->
+        <div class="sort">
+          <label class="sort__label" for="sort-select">並べ替え</label>
+          <select class="sort__select" id="sort-select" aria-label="本棚の並べ替え">
+            <option value="default">デフォルト</option>
+            <option value="year-asc">出版年：古い順</option>
+            <option value="year-desc">出版年：新しい順</option>
+          </select>
+        </div>
+        <!-- シリーズまとめ解除スイッチ。シリーズタブのときだけ表示（JS で hidden を制御）。
+             並べ替えの右＝タブのすぐ右隣に置く。ON=シリーズをまとめる（既定）／OFF=各巻に分ける。 -->
+        <div class="series-toggle" id="series-toggle" hidden>
+          <span class="series-toggle__text">シリーズをまとめる</span>
+          <label class="switch" title="オフにするとシリーズを各巻に分けて表示します">
+            <input class="switch__input" type="checkbox" id="series-group-toggle" checked
+                   aria-label="シリーズをまとめる">
+            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+          </label>
+        </div>
       </div>
       <!-- 検索窓・CiNii API トグル・類セレクタ・検索ボタンを一続きの1ブロックにまとめる。
            収録データ検索モード（既定）では data/search のコーパスから NDC 類（1桁）内を検索し、
            API 検索モードでは server/app.py を叩く。空送信で棚（分類全体/既定）へ戻る。 -->
       <form class="search" id="search-form" role="search" aria-label="書誌検索">
-        <div class="search__field">
+        <div class="search__field" id="search-field">
           <input
             class="search__input"
             id="search-input"
@@ -64,15 +84,20 @@
             placeholder="キーワードで検索（例: 漱石 小説）"
             aria-label="検索キーワード"
             autocomplete="off">
-          <!-- CiNii API 検索トグル。ON=API 検索／OFF=収録データ検索（既定）。検索窓と検索ボタンの
-               間に置く。サーバ未稼働時はグレーアウトし、押下で吹き出し（.api-tip）を出す（JS 制御）。 -->
-          <button class="api-toggle" id="api-toggle" type="button" role="switch" aria-checked="false"
-                  aria-label="CiNii API を検索">
-            <span class="api-toggle__label">CiNii API</span>
-            <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-          </button>
-          <!-- 収録データ検索の対象類（0〜9）。API 検索オン時はグレーアウトする（JS 制御）。 -->
-          <select class="sort__select search-class" id="search-class" aria-label="検索する NDC 類"></select>
+          <!-- 検索オプション（API トグル＋類）。通常表示は display:contents で入力欄と
+               検索ボタンの間にそのまま挟まり、コンパクト表示では検索窓のすぐ下へ
+               つながるオーバーレイになる（検索窓にカーソルがある間だけ表示）。 -->
+          <div class="search__opts" id="search-opts">
+            <!-- CiNii API 検索トグル。ON=API 検索／OFF=収録データ検索（既定）。検索窓と検索ボタンの
+                 間に置く。サーバ未稼働時はグレーアウトし、押下で吹き出し（.api-tip）を出す（JS 制御）。 -->
+            <button class="api-toggle" id="api-toggle" type="button" role="switch" aria-checked="false"
+                    aria-label="CiNii API を検索">
+              <span class="api-toggle__label">CiNii API</span>
+              <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+            </button>
+            <!-- 収録データ検索の対象類（0〜9）。API 検索オン時はグレーアウトする（JS 制御）。 -->
+            <select class="sort__select search-class" id="search-class" aria-label="検索する NDC 類"></select>
+          </div>
           <button class="search__button" type="submit" aria-label="検索">検索</button>
         </div>
       </form>
@@ -151,6 +176,6 @@
   </footer>
 
   <script src="js/search.js?v=20260722a" defer></script>
-  <script src="js/app.js?v=20260728a" defer></script>
+  <script src="js/app.js?v=20260805a" defer></script>
 </body>
 </html>
