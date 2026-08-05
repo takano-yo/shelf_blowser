@@ -12,6 +12,8 @@ build/README.md の要件定義に対応した実装。
                         NDC マスタ index.json を作る（docs/site-structure.md
                         「データ設計」）。棚データが表示層への唯一の入力。
   --ndc-covers-inplace  既存の棚データへ OpenBD 表紙を後付けする。
+  --renormalize-inplace 既存の棚データの creators/contribKind を再計算する
+                        （core/normalize.py の正規化規則を直したとき）。
   --ndc-rev             NCID→3 桁 NDC の逆引きシャードを作る。
   --search-index        収録データ検索のコーパスを作る。
 
@@ -29,7 +31,7 @@ from pathlib import Path
 # リポジトリ直下を import パスへ追加し、core を共有モジュールとして読む。
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core.ciniisearch import fetched_at, items_from_response, total_results  # noqa: E402
-from core.normalize import normalize_item  # noqa: E402
+from core.normalize import contrib_kind, normalize_creators, normalize_item  # noqa: E402
 from core.openbd import enrich_covers  # noqa: E402 — build と server で共有（段階3 表紙取得）
 from core.search_normalize import (  # noqa: E402 — 検索コーパス生成（手順2）
     NORMALIZE_VERSION, book_haystack, normalize_search,
@@ -177,6 +179,50 @@ def enrich_ndc_covers_inplace(ndc_out, cache=".cache/openbd/",
             json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8"
         )
     return len(code_files), filled
+
+
+def renormalize_inplace(ndc_out):
+    """コミット済み棚データの `creators` / `contribKind` を再計算する（その場更新）。
+
+    著者正規化の規則（`core/normalize.py` の役割語辞書など）を直したとき、
+    生成済みの `site/data/ndc/<記号>.json` は古い規則のまま残る。NDC 棚の生
+    レスポンス（`.cache/ndc/`）はリポジトリ管理外なので棚を作り直せない
+    （`--ndc-covers-inplace` と同じ事情）。
+
+    `creators` / `contribKind` は原文 `creatorRaw` だけから決まる純粋関数の出力
+    なので、成果物を入力に**再ビルドと同じ値**を復元できる。ここではその 2 項目
+    だけを更新し、棚の並び・件数・`coverUrl` を含む他の項目は一切変えない。
+
+    差分が出たファイルだけ書き戻す（＝冪等。2 回目は 0 ファイル更新）。
+    """
+    targets = sorted(p for p in Path(ndc_out).glob("*.json")
+                     if p.name != "index.json")
+
+    files_changed = recs_changed = 0
+    # 棚を 1 ファイルずつ処理する（全棚を同時に展開しない＝メモリ安全）。
+    for idx, p in enumerate(targets, 1):
+        records = json.loads(p.read_text(encoding="utf-8"))
+        hit = 0
+        for r in records:
+            raw = r.get("creatorRaw")
+            creators = normalize_creators(raw)
+            kind = contrib_kind(raw)
+            if creators != r.get("creators") or kind != r.get("contribKind"):
+                r["creators"] = creators
+                r["contribKind"] = kind
+                hit += 1
+        if hit:
+            p.write_text(
+                json.dumps(records, ensure_ascii=False, separators=(",", ":")),
+                encoding="utf-8",
+            )
+            files_changed += 1
+            recs_changed += hit
+        if idx % 200 == 0 or idx == len(targets):
+            print(f"  著者正規化の再適用: {idx}/{len(targets)} ファイル"
+                  f"（更新 {files_changed} ファイル / {recs_changed} レコード）",
+                  file=sys.stderr)
+    return len(targets), files_changed, recs_changed
 
 
 def build_ndc_rev(ndc_dir, out_dir):
@@ -350,6 +396,10 @@ def main(argv=None):
     p.add_argument("--ndc-covers-inplace", action="store_true",
                    help="既存 site/data/ndc/*.json に OpenBD 表紙を後付けする"
                         "（NDC 生キャッシュ不要。--ndc-out を対象に更新）")
+    p.add_argument("--renormalize-inplace", action="store_true",
+                   help="既存 site/data/ndc/*.json の creators/contribKind を "
+                        "creatorRaw から再計算してその場更新する"
+                        "（正規化規則を直したとき用。生キャッシュ不要）")
     p.add_argument("--ndc-rev", action="store_true",
                    help="NCID→3桁NDC の逆引きシャードを生成する"
                         "（site/data/ndc/ → site/data/ndc/rev/。"
@@ -367,6 +417,12 @@ def main(argv=None):
     p.add_argument("--cover-interval", type=float, default=1.0,
                    help="OpenBD リクエスト間隔・秒（既定 1.0。API 提供元へのマナー）")
     args = p.parse_args(argv)
+
+    if args.renormalize_inplace:
+        scanned, changed, recs = renormalize_inplace(args.ndc_out)
+        print(f"著者正規化の再適用（その場更新）: {scanned} ファイル走査"
+              f" / 更新 {changed} ファイル・{recs:,} レコード")
+        return 0
 
     if args.ndc_rev:
         index = build_ndc_rev(args.ndc_out, Path(args.ndc_out) / "rev")
@@ -411,7 +467,8 @@ def main(argv=None):
 
     # 既定モードは持たない（旧「既定キーワード棚」は廃止。棚データは NDC 分類単位）。
     p.error("生成モードを指定してください"
-            "（--ndc / --ndc-covers-inplace / --ndc-rev / --search-index）")
+            "（--ndc / --ndc-covers-inplace / --renormalize-inplace / "
+            "--ndc-rev / --search-index）")
 
 
 if __name__ == "__main__":

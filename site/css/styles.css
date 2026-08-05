@@ -1333,7 +1333,7 @@ a.ov__ndc-btn:focus-visible { color: #fff; background: var(--sky-deep); border-c
  * （モバイルの横向きなど）で内容が切れてしまわないよう、スクロール自体は常に許可する。
  * ========================================================================= */
 body.start-page {
-  --sp-bg: #75716e;          /* 中間グレー（従来のダークグレーより明るく） */
+  --sp-bg: #3b1313;          /* 中間グレー（従来のダークグレーより明るく） */
   --sp-surface: #2a2e34;
   --sp-surface-2: #31363d;
   --sp-btn: #26292e;         /* ボタン塗りつぶし（黒系ダークグレー） */
@@ -1599,7 +1599,15 @@ body.start-page {
  * ----------------------------------------------------------------------- */
 @media (max-width: 600px) {
   body.start-page { padding: 1rem 0.9rem; }
-  .start-page .start { gap: 1.1rem; }
+  /* 上下中央寄せ（margin: auto 0）のままだとコピー上部の余白が広く見えるため、
+   * 上下の余白を均等 1:1 ではなく上寄りに配分し直す（前後に疑似要素の可変
+   * スペーサーを置き、下側をより多く伸ばす）。画面が低く余白そのものが
+   * 無くなる場合は auto margin と同様どちらも 0 に潰れるだけなので、
+   * 短い画面ではみ出す心配はない。 */
+  .start-page .start { margin: 0 auto; gap: 15px; }
+  body.start-page::before,
+  body.start-page::after { content: ""; flex: 1 0 0; min-height: 0; }
+  body.start-page::after { flex-grow: 2.2; }
 
   /* 折り返して 2 行になると縦の余白を圧迫するため、1 行で収まる幅まで縮める。 */
   .start__copy {
@@ -1616,10 +1624,13 @@ body.start-page {
 
   .start-page .ndc-nav__heading { margin-bottom: 0.6rem; font-size: 0.95rem; }
   /* 幅が足りずパンくずと「棚を見る」は必ず 2 段になるので、選択前から 2 段ぶんの
-   * 高さを確保しておく。こうしないと選択のたびにボタン群が上下に動く。 */
+   * 高さを確保しておく。こうしないと選択のたびにボタン群が上下に動く。
+   * justify-content は center ではなく flex-start にし、1 段目（パンくず）を
+   * 常に上詰めで固定する。center だと選択前（1 段のみ）は 2 段ぶんの高さの
+   * 中央に来てしまい、選択後に 2 段になった瞬間「すべて」が上へ跳ねて見える。 */
   .start-page .ndc-nav__controls {
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 0.45rem;
     margin-bottom: 0.6rem;
     min-height: 4.4rem;
