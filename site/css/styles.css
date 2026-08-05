@@ -13,6 +13,9 @@
   --series-frame: #1f9bc4; /* シリーズもの = 枠あり（2値） */
   --text: #16323f;
   --muted: #5f7a88;
+  /* グレーアウト時の文字色。要素全体を opacity で薄くすると枠線まで薄まり、
+     隣り合うセグメントとの枠線が途切れて見えるため、色だけを薄くするのに使う。 */
+  --muted-soft: #a4b8c3;
   --line: #d7e6ee;
   --shadow: 0 2px 10px rgba(31, 155, 196, 0.12);
 
@@ -259,7 +262,11 @@ body.about-overlay-open .site-header {
 /* ===== 検索ブロック内オプション（CiNii API 検索トグル＋対象類セレクタ） ===== */
 /* 検索窓と「検索」ボタンの間に置き、入力欄・API トグル・類・検索ボタンで一続きの
    1ブロックを作る（.search__field が align-items:stretch で高さを揃える）。
-   中間セグメントは角丸を付けず、左境界線だけで隣と仕切る（右境界線は隣が持つ）。 */
+   中間セグメントは角丸を付けず、左境界線だけで隣と仕切る（右境界線は隣が持つ）。
+   ラッパ（.search__opts）は通常表示では display:contents で無いものとして扱い、
+   入力欄・API トグル・類・検索ボタンを従来どおり 1 本のフレックス列に並べる
+   （コンパクト表示でのみ実体を持ち、検索窓の下のオーバーレイになる）。 */
+.search__opts { display: contents; }
 .api-toggle {
   display: inline-flex;
   align-items: center;
@@ -289,11 +296,16 @@ body.about-overlay-open .site-header {
   border-color: var(--sky-deep);
 }
 .api-toggle.is-on .switch__thumb { transform: translateX(1.1rem); }
-/* サーバ未稼働時はグレーアウト（disabled にはせず、押下で JS が吹き出しを出す）。 */
+/* サーバ未稼働時はグレーアウト（disabled にはせず、押下で JS が吹き出しを出す）。
+   要素全体を opacity で薄くすると枠線まで薄まり、入力欄・類・検索ボタンと枠線が
+   つながって見えなくなるため、中の文字とトグルだけを薄くして枠線は残す。 */
 .api-toggle.is-disabled {
-  opacity: 0.5;
   cursor: not-allowed;
+  color: var(--muted-soft);
+  background: var(--surface);
 }
+.api-toggle.is-disabled:hover { background: var(--surface); }
+.api-toggle.is-disabled .switch__track { opacity: 0.5; }
 /* 検索対象類セレクタ。ブロックの中間セグメント（角丸なし・左境界線で仕切る）。
    API 検索オン時は無効化してグレーアウトする。 */
 .search-class {
@@ -301,10 +313,17 @@ body.about-overlay-open .site-header {
   border-radius: 0;
   border-right: none;
 }
+/* こちらも枠線は隣接セグメントと同じ濃さのまま残す（UA 既定の opacity を打ち消す）。 */
 .search-class:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
+  opacity: 1;
+  color: var(--muted-soft);
+  -webkit-text-fill-color: var(--muted-soft);
+  background-color: var(--surface);
+  /* ▾ も文字と同じ薄さに合わせる。 */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a4b8c3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
+.search-class:disabled:hover { background-color: var(--surface); }
 
 /* CiNii API トグルの吹き出し（サーバ未稼働時の注意）。ポップアップ（alert）ではなく
    ボタン下に固定配置し、上向きの三角でボタンを指す。数秒で自動的に消える（JS 制御）。 */
@@ -436,9 +455,14 @@ body.about-overlay-open .site-header {
 }
 .search__input:focus {
   outline: none;
-  border-color: var(--sky);
   background: #fff;
 }
+/* フォーカス時は入力欄だけでなくブロック内の全セグメント（API トグル・類）の枠線を
+   同じ色へ切り替え、セグメントの継ぎ目で線色が食い違わないようにする。
+   スタートページは独自テーマの枠線色を持つので、本棚ページの検索バーだけに限定する。 */
+.searchbar .search__field:focus-within .search__input,
+.searchbar .search__field:focus-within .api-toggle,
+.searchbar .search__field:focus-within .search-class { border-color: var(--sky); }
 
 .search__button {
   flex: 0 0 auto;
@@ -459,9 +483,8 @@ body.about-overlay-open .site-header {
  * ビューポート幅では判定できない（タブの本数や文言で必要幅が変わるため）。
  * JS（updateToolbarLayout）が実測し、収まらないときだけ .searchbar__inner に
  * .searchbar--compact を付与してモバイル型の2段組みへ切り替える。
- * 上段＝検索窓（全幅）／下段＝タブ切り替え＋並べ替えを1行に収める。
- * シリーズトグルはシリーズタブでのみ現れる条件付き要素なので最後に置き、
- * 収まらない場合はトグルだけが次行へ折り返す（タブ＋並べ替えの行は崩さない）。 */
+ * 上段＝検索窓＋検索ボタン（1行）／下段＝タブ（プルダウン）＋並べ替え＋
+ * シリーズまとめ（シリーズタブのみ）を必ず1行に収める。 */
 .searchbar__inner.searchbar--compact {
   gap: 0.55rem 0.55rem;
 }
@@ -470,40 +493,188 @@ body.about-overlay-open .site-header {
   flex-basis: 100%;
   margin-left: 0;
   max-width: none;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
-/* コンパクト時はブロックを全幅にし、検索窓（1段目）／API トグル・類・検索ボタン
-   （2段目）へ折り返す。各段の両端に角丸を戻し、段ごとに独立したブロックに見せる。 */
+/* コンパクト時はブロックを全幅の1行にし、入力欄と検索ボタンだけを並べる。
+   API トグル・類は .search__opts のオーバーレイへ退避する（下方参照）。 */
 .searchbar--compact .search__field {
+  position: relative;
   flex-basis: 100%;
-  flex-wrap: wrap;
-  row-gap: 0.5rem;
+  flex-wrap: nowrap;
 }
 .searchbar--compact .search__input {
-  flex-basis: 100%;
-  border-right: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-.searchbar--compact .api-toggle {
-  border-radius: var(--radius) 0 0 var(--radius);
-}
-.searchbar--compact .tabs {
-  order: 1;
-  /* flex-basis を 0 にして折り返し判定上のタブ幅を 0 扱いにし、並べ替えと必ず
-     同一行へ収める。実幅は余白いっぱいまで伸び、入り切らないタブは中身が
-     はみ出してタブエリア内で横スクロールする。 */
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-width: 0;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
 }
-.searchbar--compact .tabs::-webkit-scrollbar { display: none; }
-.searchbar--compact .sort { order: 2; flex: 0 0 auto; }
-/* コンパクト表示はラベル文字を非表示にし、その分タブ切り替えボタンの表示領域を広げる。
+
+/* --- コンパクト時の検索オプション（CiNii API トグル＋類）のオーバーレイ --- */
+/* 通常時は隠し、検索窓にカーソルが入っている間だけ検索ブロックのすぐ下へ
+   つなげて表示する。背面の要素は動かさず（レイアウトを押し下げず）に重ねる。 */
+.searchbar--compact .search__opts {
+  display: flex;
+  align-items: stretch;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1;
+  margin-top: -1px; /* 検索ブロックの下端線と枠線を重ねて1本にし、地続きに見せる */
+  box-shadow: 0 8px 18px rgba(22, 50, 63, 0.16);
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+}
+.searchbar--compact .search__field.is-opts-open .search__opts {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+/* オーバーレイ内は左右端に角丸を戻し、2セグメントで1ブロックに見せる。 */
+.searchbar--compact .search__opts .api-toggle {
+  padding: 0.45rem 0.7rem;
+  border-radius: 0 0 0 var(--radius);
+}
+.searchbar--compact .search__opts .search-class {
+  border-right: 1px solid var(--line);
+  border-radius: 0 0 var(--radius) 0;
+}
+
+/* --- コンパクト時の操作列（タブ・並べ替え・シリーズまとめ） --- */
+/* 通常表示は display:contents で従来どおり .searchbar__inner の直接の項目として
+   並ぶ。コンパクト表示ではこの要素自体が折り返さない1行になり、3要素が必ず
+   同じ行へ収まる（入り切らない分は各要素が縮み、文字は省略記号で詰める）。 */
+.toolbar { display: contents; }
+.searchbar--compact .toolbar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  flex: 1 1 100%;
+  min-width: 0;
+  order: 1;
+}
+/* 横並びのタブ列はプルダウン（.tab-select）に置き換える。 */
+.searchbar--compact .tabs { display: none; }
+/* 幅の譲り合いの優先順位（狭い画面で削る順）:
+   1. 並べ替え … flex-basis を 0 にし、余った幅だけを取る（閉じた状態の表示が
+      切れても、展開すれば全文が読めるため最初に譲る）
+   2. タブ     … 文字幅ぶんを確保し、足りなくなったときだけ縮む
+   3. シリーズまとめ … ほぼ縮まない（ラベルが読めないと機能が伝わらないため）
+   これで 3 要素は常に 1 行へ収まり、削られる順序も一定になる。 */
+.searchbar--compact .tab-select {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 3.5rem;
+  max-width: 12rem;
+}
+.searchbar--compact .sort { flex: 1 3 auto; min-width: 3.5rem; max-width: 12rem; }
+.searchbar--compact .sort .sort__select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 1.4rem 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* コンパクト表示はラベル文字を非表示にし、その分プルダウンの表示領域を広げる。
    見出しはプルダウン展開時に optgroup（JS で付与）として先頭に表示する。 */
 .searchbar--compact .sort__label { display: none; }
-.searchbar--compact .series-toggle { order: 3; flex: 0 0 auto; }
+.searchbar--compact .series-toggle { flex: 0 0 auto; min-width: 0; gap: 0.25rem; }
+.searchbar--compact .series-toggle__text {
+  min-width: 0;
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.searchbar--compact .switch { flex: 0 0 auto; }
+/* コンパクト表示ではスイッチを一回り小さくし、その分をラベルの表示幅に回す
+   （「シリーズをまとめる」を省略せずに 1 行へ収めるため）。 */
+.searchbar--compact .series-toggle .switch__track { width: 2rem; height: 1.2rem; }
+.searchbar--compact .series-toggle .switch__thumb { width: 0.9rem; height: 0.9rem; }
+.searchbar--compact .series-toggle .switch__input:checked + .switch__track .switch__thumb {
+  transform: translateX(0.775rem);
+}
+/* 極端に狭い画面（〜359px）ではタブ名・並べ替えが判読できる幅を確保できないため、
+   そこでだけシリーズまとめのラベルも縮小対象に含め、3要素で幅を分け合う。 */
+@media (max-width: 359px) {
+  .searchbar--compact .series-toggle { flex: 0 1 auto; }
+  .searchbar--compact .tab-select { min-width: 5rem; }
+}
+
+/* ===== コンパクト表示のタブ（プルダウン） ===== */
+/* 選択中タブと同じフォルダ型の見た目（上端の水色ライン・上部の角丸・本棚と
+   地続きの下端＋左右の足）を保ったまま、横並びをやめて1個分の幅に収める。 */
+.tab-select { display: none; }
+.searchbar--compact .tab-select {
+  position: relative;
+  /* .searchbar__inner の下パディング分を相殺し、検索バー下端＝本棚の面へ密着させる
+     （横並びタブ .tabs と同じ扱い）。 */
+  margin-bottom: calc(-0.61rem + 5px);
+}
+.tab-select__input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0.45rem 1.3rem calc(0.55rem + 4.5px) 0.6rem;
+  font-size: 0.8rem;
+  /* .tab と同じ理由でブラウザ依存の line-height: normal を避ける。 */
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--sky-deep);
+  background-color: var(--bg);
+  border: 1px solid var(--line);
+  /* 下端は本棚エリア（var(--bg)）と同色で開けて地続きにする。 */
+  border-bottom-color: var(--bg);
+  border-radius: 8px 8px 0 0;
+  box-shadow: inset 0 2px 0 var(--sky-deep);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  /* ネイティブの矢印を消し、タブ文字と同じ水色の▾を右端に描く。 */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%231f9bc4' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 0.6rem;
+}
+.tab-select__input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 選択中タブと同じ「足」の円弧。下端左右を円弧で外側へ広げ、本棚エリアと
+   地続きに見せる（.tab.is-active::before/::after と同じ描き方）。 */
+.searchbar--compact .tab-select::before,
+.searchbar--compact .tab-select::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+}
+.searchbar--compact .tab-select::before {
+  left: -8px;
+  background: radial-gradient(circle 8px at top left,
+    transparent 0 6.9px, var(--line) 6.9px 7.9px, var(--bg) 7.9px);
+}
+.searchbar--compact .tab-select::after {
+  right: -8px;
+  background: radial-gradient(circle 8px at top right,
+    transparent 0 6.9px, var(--line) 6.9px 7.9px, var(--bg) 7.9px);
+}
+
+/* ===== 検索バーの自動退避（コンパクト表示のみ） ===== */
+/* モバイルでは棚の表示領域を稼ぐため、一定量下へスクロールすると検索バー
+   （検索窓・タブ・並べ替え）を上へ退避し、上スクロールで戻す（JS が
+   .is-tucked を付け外しする。通常表示では付与しない）。 */
+.searchbar {
+  transition: transform 0.18s ease;
+}
+.searchbar.is-tucked {
+  transform: translateY(-100%);
+}
 
 /* ===== 本棚 ===== */
 .shelf-wrap {

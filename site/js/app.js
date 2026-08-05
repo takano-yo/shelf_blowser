@@ -49,12 +49,15 @@ const els = {
   ovFwd: document.getElementById('ov-fwd'),
   aboutOverlay: document.getElementById('about-overlay'),
   aboutOpenBtn: document.getElementById('about-open-btn'),
+  searchbar: document.getElementById('searchbar'),
   searchbarInner: document.querySelector('.searchbar__inner'),
   searchForm: document.getElementById('search-form'),
+  searchField: document.getElementById('search-field'),
   searchInput: document.getElementById('search-input'),
   apiToggle: document.getElementById('api-toggle'),
   searchClass: document.getElementById('search-class'),
   tabs: document.getElementById('tabs'),
+  tabSelect: document.getElementById('tab-select'),
   sort: document.querySelector('.sort'),
   sortSelect: document.getElementById('sort-select'),
   seriesToggle: document.getElementById('series-toggle'),
@@ -559,6 +562,17 @@ function baseItemsFor(tab) {
 
 /* ---------- タブ（表示する書籍の切り替え） ---------- */
 
+/* タブの選択状態を UI へ反映する。通常表示の横並びタブと、コンパクト表示の
+ * タブ（プルダウン）は同じ選択を指すため、常に両方をまとめて更新する。 */
+function setActiveTabUi(tab) {
+  els.tabs.querySelectorAll('.tab').forEach((b) => {
+    const on = b.dataset.tab === tab;
+    b.classList.toggle('is-active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  if (els.tabSelect && els.tabSelect.value !== tab) els.tabSelect.value = tab;
+}
+
 /* タブを切り替える。離脱前に現在のスクロール位置を保存し、戻ってきたときに復元する
  * （例: すべて→単著/共著→すべて で元の位置に戻る）。初訪問のタブは先頭から表示。 */
 function switchTab(tab) {
@@ -566,11 +580,7 @@ function switchTab(tab) {
   scrollByTab[activeTab] = window.scrollY; // 離脱するタブの位置を保存
   activeTab = tab;
 
-  els.tabs.querySelectorAll('.tab').forEach((b) => {
-    const on = b.dataset.tab === tab;
-    b.classList.toggle('is-active', on);
-    b.setAttribute('aria-selected', on ? 'true' : 'false');
-  });
+  setActiveTabUi(tab);
 
   // まとめ解除スイッチはシリーズタブのときだけ見せる。
   if (els.seriesToggle) els.seriesToggle.hidden = tab !== 'series';
@@ -1261,13 +1271,87 @@ function updateToolbarLayout() {
   inner.classList.toggle('searchbar--compact', !fitsOneLine);
 }
 
+/* 現在コンパクト（モバイル型）表示かどうか。 */
+function isCompactLayout() {
+  return !!(els.searchbarInner && els.searchbarInner.classList.contains('searchbar--compact'));
+}
+
+/* ---------- コンパクト表示の検索オプション（オーバーレイ） ---------- */
+
+/* コンパクト表示では CiNii API トグルと類セレクタを検索窓の下のオーバーレイに置き、
+ * 検索窓にカーソルがある間だけ見せる（通常は入力欄＋検索ボタンの1行だけ）。
+ * 通常表示では CSS 側が display:contents のままなので、この開閉は見た目に影響しない。 */
+function openSearchOpts() {
+  if (els.searchField) els.searchField.classList.add('is-opts-open');
+}
+
+function closeSearchOpts() {
+  if (els.searchField) els.searchField.classList.remove('is-opts-open');
+}
+
+/* 検索窓のフォーカスと画面外タップでオーバーレイを開閉する。
+ * ボタンのタップでフォーカスが移らない環境（iOS Safari 等）があるため、
+ * 入力欄の blur では閉じず「検索ブロックの外を触ったら閉じる」で判定する。 */
+function bindSearchOpts() {
+  if (!els.searchField || !els.searchInput) return;
+  els.searchInput.addEventListener('focus', openSearchOpts);
+  // 検索ブロックの外を触ったら閉じる（オプション自身の操作では閉じない）。
+  document.addEventListener('pointerdown', (e) => {
+    if (!els.searchField.contains(e.target)) closeSearchOpts();
+  }, true);
+  els.searchField.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSearchOpts();
+  });
+  // 検索実行後は結果を見せたいので畳む。
+  els.searchForm.addEventListener('submit', closeSearchOpts);
+}
+
+/* ---------- コンパクト表示の検索バー自動退避 ---------- */
+
+const TUCK_HIDE_PX = 72;  // これだけ続けて下へスクロールしたら検索バーを退避する
+const TUCK_SHOW_PX = 24;  // これだけ続けて上へスクロールしたら戻す
+
+let tuckLastY = 0;    // 直前のスクロール位置
+let tuckAccum = 0;    // 同じ向きに連続してスクロールした量（符号付き）
+
+/* 一定量の下スクロールで検索バーを上へ退避し、上スクロールで戻す（コンパクト表示のみ）。
+ * 背面の本棚は動かさず、検索バーだけを transform でずらす。 */
+function updateSearchbarTuck() {
+  const bar = els.searchbar;
+  if (!bar) return;
+  const y = Math.max(0, window.scrollY);
+  const dy = y - tuckLastY;
+  tuckLastY = y;
+  if (!isCompactLayout()) { bar.classList.remove('is-tucked'); tuckAccum = 0; return; }
+  // 入力中（検索窓にカーソルがある）は退避しない。ソフトキーボードを出したまま
+  // 検索窓が画面外へ消えてしまうのを避ける。タブ・並べ替えのプルダウンは操作後も
+  // フォーカスが残るため、対象は検索窓だけに絞る。
+  if (els.searchInput && document.activeElement === els.searchInput) {
+    bar.classList.remove('is-tucked');
+    tuckAccum = 0;
+    return;
+  }
+  // 検索バーの高さぶんも進んでいない位置では常に見せる（先頭付近は退避しない）。
+  if (y <= bar.offsetHeight) { bar.classList.remove('is-tucked'); tuckAccum = 0; return; }
+  if (dy === 0) return;
+  // 向きが変わったら累積をリセットし、同じ向きの連続量だけで判定する。
+  if ((dy > 0) !== (tuckAccum > 0)) tuckAccum = 0;
+  tuckAccum += dy;
+  if (tuckAccum > TUCK_HIDE_PX) {
+    bar.classList.add('is-tucked');
+    closeSearchOpts();
+  } else if (tuckAccum < -TUCK_SHOW_PX) {
+    bar.classList.remove('is-tucked');
+  }
+}
+
 // コンパクト表示のみ、並べ替えプルダウンを展開したときに先頭へ選択不可の見出し
 // 「並べ替え」を表示する（閉じた状態の表示＝選択中の値には影響しない）。
 // 通常表示では付与せず、ラベル表示の現状を維持する。
 function syncSortHeadingOption() {
   const select = els.sortSelect;
   if (!select) return;
-  const isCompact = !!(els.searchbarInner && els.searchbarInner.classList.contains('searchbar--compact'));
+  const isCompact = isCompactLayout();
   const group = select.querySelector('optgroup[data-sort-heading]');
   if (isCompact && !group) {
     // option を一旦 select から切り離して移すと、再接続時に選択状態が崩れる
@@ -1429,6 +1513,15 @@ function bindEvents() {
     if (btn) switchTab(btn.dataset.tab);
   });
 
+  // タブ切り替え（コンパクト表示のプルダウン）。切り替えられなかった場合
+  // （対象タブが空など）は表示中タブへ戻し、選択と実際の表示をずらさない。
+  if (els.tabSelect) {
+    els.tabSelect.addEventListener('change', (e) => {
+      switchTab(e.target.value);
+      setActiveTabUi(activeTab);
+    });
+  }
+
   // 並べ替え（プルダウン）
   if (els.sortSelect) {
     els.sortSelect.addEventListener('change', (e) => changeSort(e.target.value));
@@ -1460,8 +1553,15 @@ function bindEvents() {
     });
   }
 
+  // コンパクト表示の検索オプション（CiNii API トグル・類）のオーバーレイ開閉。
+  bindSearchOpts();
+
   // スクロール／リサイズでボタン位置がずれるので、CiNii API トグルの吹き出しは畳む。
-  window.addEventListener('scroll', hideApiTip, { passive: true });
+  // 併せてコンパクト表示の検索バー自動退避（下スクロールで隠す／上で戻す）を更新する。
+  window.addEventListener('scroll', () => {
+    hideApiTip();
+    updateSearchbarTuck();
+  }, { passive: true });
 
   // ウィンドウ幅変化で列数が変わったら棚板を敷き直す（リサイズ確定後にだけ実行）。
   let resizeTimer;
@@ -1472,6 +1572,10 @@ function bindEvents() {
       applyShelfLayout(false);
       updateToolbarLayout();
       syncSortHeadingOption();
+      // 表示形態が変わるので、退避した検索バーは戻して累積もリセットする。
+      if (els.searchbar) els.searchbar.classList.remove('is-tucked');
+      tuckLastY = Math.max(0, window.scrollY);
+      tuckAccum = 0;
       maybeLoadMore(); // 画面が広がり一度に多くの段が見える場合の追加読み込み
     }, 120);
   });
@@ -1499,11 +1603,7 @@ function setBooks(books, query) {
   activeTab = 'all';
   seriesUngrouped = false;
   // タブの見た目を「すべて」に戻す。
-  els.tabs.querySelectorAll('.tab').forEach((b) => {
-    const on = b.dataset.tab === 'all';
-    b.classList.toggle('is-active', on);
-    b.setAttribute('aria-selected', on ? 'true' : 'false');
-  });
+  setActiveTabUi('all');
   if (els.seriesToggle) els.seriesToggle.hidden = true;
   Object.keys(scrollByTab).forEach((k) => delete scrollByTab[k]);
   hideCoverDetail();
@@ -1747,11 +1847,7 @@ function showNoShelf(lead) {
   // タブの見た目も「すべて」に戻す（setBooks と同じ扱い。棚が空なので選択は無意味）。
   activeTab = 'all';
   seriesUngrouped = false;
-  els.tabs.querySelectorAll('.tab').forEach((b) => {
-    const on = b.dataset.tab === 'all';
-    b.classList.toggle('is-active', on);
-    b.setAttribute('aria-selected', on ? 'true' : 'false');
-  });
+  setActiveTabUi('all');
   if (els.seriesToggle) els.seriesToggle.hidden = true;
   hideNdcHeading();
   // lead は呼び出し側でエスケープ済みの HTML 断片。
@@ -2001,6 +2097,7 @@ async function init() {
   bindEvents();
   updateToolbarLayout();
   syncSortHeadingOption();
+  tuckLastY = Math.max(0, window.scrollY); // 検索バー自動退避の基準位置
   // サーバ稼働判定（/api/ping）と類セレクタの準備を先に済ませ、モード UI を確定する。
   // ping 失敗（Pages 等サーバ未稼働）でも収録データ検索は成立する。
   const [up, index] = await Promise.all([
