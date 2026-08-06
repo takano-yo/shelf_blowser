@@ -57,10 +57,17 @@ NDC_DATA_DIR = SITE_DIR / "data" / "ndc"  # build --ndc の出力（分類ごと
 CACHE_DIR = Path(__file__).resolve().parent / "cache"
 OPENBD_CACHE_DIR = ROOT / ".cache" / "openbd"  # build と共有（ISBN 単位キャッシュ）
 
+# 1 検索あたりの取得件数の既定と上限。静的な棚データの保存上限（build --ndc-max
+# = 1000）に揃える。CiNii の count は仕様上の上限が公開されておらず、1 コールで
+# 1 万件返る挙動は保証されていないため、既定・上限とも控えめに取る
+# （→ core.ciniisearch.DEFAULT_COUNT）。
+DEFAULT_COUNT = 1000
+MAX_COUNT = 2000
+
 # 起動オプション（main で確定）
 CONFIG = {
     "live": True,           # True: CiNii を叩く / False: 静的 NDC データのみで応答する
-    "count": 10000,         # CiNii の 1 リクエスト上限。検索語の全件取得を狙う
+    "count": DEFAULT_COUNT,  # 1 検索あたりの取得件数
     "cache_ttl": 3600,      # 秒。キャッシュの有効期限（0 で無期限）
     "covers": True,         # 検索結果に OpenBD で書影 URL を一括付与するか
 }
@@ -221,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
                 status=400)
             return
         try:
-            count = min(int(qs.get("count", [CONFIG["count"]])[0]), 10000)
+            count = min(int(qs.get("count", [CONFIG["count"]])[0]), MAX_COUNT)
         except ValueError:
             count = CONFIG["count"]
         try:
@@ -287,7 +294,9 @@ def main(argv=None):
     p.add_argument("--host", default="127.0.0.1", help="待受ホスト")
     p.add_argument("--offline", action="store_true",
                    help="CiNii を叩かない（ndc 指定の分類内検索のみ静的データで応答する）")
-    p.add_argument("--count", type=int, default=10000, help="1 検索あたりの既定取得件数")
+    p.add_argument("--count", type=int, default=DEFAULT_COUNT,
+                   help=f"1 検索あたりの既定取得件数（既定 {DEFAULT_COUNT}・"
+                        f"上限 {MAX_COUNT}）")
     p.add_argument("--cache-ttl", type=int, default=3600,
                    help="結果キャッシュの有効期限（秒・0 で無期限）")
     p.add_argument("--no-covers", action="store_true",

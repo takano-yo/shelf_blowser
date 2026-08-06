@@ -20,6 +20,9 @@ fetch/README.md「A. NDC 分類ごとの一覧取得」の実装。対象は NDC
 User-Agent・指数バックオフ（core.ciniisearch）・取得済みスキップ（冪等・中断
 再開可能）・失敗分類の記録（<out>/failed.txt）。標準ライブラリのみで動く。
 
+appid（CiNii Books OpenSearch の必須パラメータ）と User-Agent は core.ciniisearch が
+実行環境の環境変数から読む。
+
 実行イメージ:
     python fetch/ndc_fetch.py --counts --out .cache/ndc/   # 件数実測（約 40 分）
     python fetch/ndc_fetch.py --out .cache/ndc/            # 全分類の一覧取得
@@ -161,8 +164,10 @@ def main(argv=None):
                    help="対象分類記号をカンマ区切りで指定（例: 910,911）")
     p.add_argument("--level", type=int, choices=(1, 2, 3), default=None,
                    help="対象階層のみ取得（1=類 / 2=綱 / 3=目。既定: 全階層）")
-    p.add_argument("--count", type=int, default=10000,
-                   help="一覧取得時の 1 分類あたり取得件数（既定 10000）")
+    p.add_argument("--count", type=int, default=2000,
+                   help="一覧取得時の 1 分類あたり取得件数（既定 2000。"
+                        "保存上限 build --ndc-max=1000 の 2 倍。大きくすると"
+                        "転送量と CiNii への負荷が増え、超過分は捨てられる）")
     p.add_argument("--interval", type=float, default=1.0,
                    help="リクエスト間隔・秒（既定 1.0。CiNii へのマナー）")
     p.add_argument("--retries", type=int, default=4,

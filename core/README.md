@@ -30,8 +30,12 @@
   前提で移行する。統合により「図書館検索」「所蔵検索」の OpenSearch も追加された。
 - **新 API（CiNii Research OpenSearch）の判明している差分**:
   - エンドポイント: `https://cir.nii.ac.jp/opensearch/books`（検索タイプ `books`）。
-  - **appid（アプリケーション ID）必須** — 現行は不要だった。
-  - **count 上限 200**（既定 20）— 現行実装の `count=10000` は不可。
+  - **appid（アプリケーション ID）必須** — 現行 CiNii Books OpenSearch でも
+    仕様上は必須（[公式仕様](https://support.nii.ac.jp/ja/cib/api/b_opensearch)で
+    appid だけが「必須です」と明記）なので、移行による差分ではない。
+  - **count 上限 200**（既定 20）— 1 コールで数千件返る現行の挙動は不可。
+    現行仕様も count の上限を明記していないため、大きな count は
+    もともと保証されていない（`core/ciniisearch.py` の `DEFAULT_COUNT` 注記）。
   - CORS 対応（`Access-Control-Allow-Origin: *`）。JSON-LD あり。
 - **要件**:
   1. **事前調査**: JSON-LD レスポンスに所蔵館数（`cinii:ownerCount` 相当）が
@@ -42,8 +46,9 @@
      前方一致の可否**も確認する。現行 CiNii Books 側は確認済み（`clas=<記号>*`・
      `fetch_response()` として実装済み）。**新 API 側の同等機能の確認が残作業**
      （→ [docs/site-structure.md](../docs/site-structure.md)「問題点と対処」#1）。
-  2. **appid の管理**: 開発者登録で appid を取得し、環境変数（例:
-     `CINII_APP_ID`）または起動オプションで注入する。**リポジトリにコミットしない**。
+  2. **appid の管理**: 開発者登録で appid を取得する。取得層は環境変数
+     `CINII_APPID` から読んで付与する（現行 API 向けに実装済み。移行後も同じ）。
+     **リポジトリにコミットしない**。
   3. **ページング取得**: `count≦200` のため `start` によるページングで集める
      `fetch_live_cir(query, max_records)` を実装する。1 検索＝1 コールの前提が
      崩れるため、**既定の取得上限を現実的な値（例: 1,000〜2,000 件＝5〜10 コール）に

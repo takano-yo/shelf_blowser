@@ -41,7 +41,7 @@
   分類名と出典（labelSource）を収録する。NDC マスタは分類の改訂がない限り
   不変なので再取得不要。
   主なオプション: `--interval`（リクエスト間隔・既定 1 秒）・`--retries`（既定 4）・
-  `--count`（一覧取得の 1 分類あたり件数・既定 10000）。
+  `--count`（一覧取得の 1 分類あたり件数・既定 2000 ＝ 保存上限 1,000 件の 2 倍）。
 - **出力**: `.cache/ndc/<分類記号>.json`（生レスポンス・Git 管理外）。
   件数実測モードは `.cache/ndc/counts.json`（分類記号 → totalResults）。
   正規化と `site/data/ndc/` への出力は `build.py --ndc` が担う
@@ -67,10 +67,11 @@ egress ポリシーで CiNii がブロックされるため注意）。
    総量を試算し、リポジトリ 1GB 未満に収まる `--ndc-max` を決める
    （docs/site-structure.md「問題点と対処」#3）。
    → **2026-07-14 実測: 延べ 18,686,614 件・上限 1,000 件に確定（総量約 392MB）**
-3. **一覧取得**: `python fetch/ndc_fetch.py --count 2000`
-   （1,110 コール。`--count` は確定した上限の 2 倍程度に抑えると転送量・
-   CiNii への負荷を減らせる〈2,000 件 ≈ 1MB/分類〉。中断可・再実行で続きから。
-   失敗分は `failed.txt` を確認して再実行）
+3. **一覧取得**: `python fetch/ndc_fetch.py`
+   （1,110 コール。`--count` の既定 2,000 は確定した上限の 2 倍で、転送量・
+   CiNii への負荷を抑える〈2,000 件 ≈ 1MB/分類〉。中断可・再実行で続きから。
+   403〈Access Limit Over〉は再試行せず失敗として記録されるので、
+   `failed.txt` を確認して時間を置いてから再実行する）
 4. **分類名**: `python fetch/ndc_labels.py`（初回のみ。`.cache/ndc/labels.json` を生成）
 5. **ビルド**: `python build/build.py --ndc --ndc-max <確定値>`
    → `site/data/ndc/<記号>.json` ＋ `index.json`（分類名・出典入り）
