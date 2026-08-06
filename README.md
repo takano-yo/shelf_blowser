@@ -225,11 +225,13 @@ python server/app.py --port 8000 --offline
   ブラウザ→自 API は通る。
 - **CiNii へのマナー / レート制限**: 検索のたびに叩くため、①送信時のみ発火
   （1 打鍵ごとに叩かない）②検索語ごとのキャッシュ ③明示的 User-Agent ④指数
-  バックオフ、を守る。
+  バックオフ（4xx は再試行せず、403 の遮断中に叩き足さない）、を守る。
+  **appid は現行 CiNii Books OpenSearch でも仕様上の必須パラメータ**なので、
+  取得層が必ず付ける（→ [core/README.md](core/README.md)）。
 - **CiNii Research 移行後の取得件数**: 新 API（CiNii Research OpenSearch）は
-  **appid（アプリケーション ID）必須・1 リクエスト 200 件が上限**のため、現行の
-  「count=10000 の 1 コールで全件」という前提が崩れる。`start` ページングによる
-  複数コール化と取得上限の見直しが必要（→ [core/README.md](core/README.md)）。
+  **1 リクエスト 200 件が上限**のため、「1 コールで全件」という前提が崩れる。
+  ページングによる複数コール化と取得上限の見直しが必要
+  （→ [core/README.md](core/README.md)）。
   なお新 API はレスポンスに CORS ヘッダを付けるため、中継サーバの必要性自体も
   再検討の余地がある（ただし appid のクライアント露出に注意）。
 - **ペイロード**: `count` に上限を設け、キャッシュ併用でモバイルでも軽く保つ。
