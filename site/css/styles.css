@@ -1566,6 +1566,23 @@ body.start-page {
   box-shadow: none;
 }
 
+/* 検索エリア／分類エリアをそれぞれ細い枠＋背景色で囲み、区分けを視覚化する。
+ * どちらも .start-page の配色トークンをベースに、分類エリアだけアクセント
+ * （赤）を薄く帯びさせて検索エリアと見分けやすくする。 */
+.start-page .start__section--search,
+.start-page .start__section--ndc {
+  padding: 1.5rem 1.6rem;
+  border-radius: calc(var(--radius) * 1.4);
+}
+.start-page .start__section--search {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--sp-line);
+}
+.start-page .start__section--ndc {
+  background: rgba(210, 70, 81, 0.08);
+  border: 1px solid rgba(210, 70, 81, 0.35);
+}
+
 /* 検索モード切替（収録データ検索 / CiNii API 検索）＋類セレクタ（ダーク配色）。 */
 .start__search-modes {
   display: flex;
@@ -1776,6 +1793,8 @@ body.start-page {
    * 無くなる場合は auto margin と同様どちらも 0 に潰れるだけなので、
    * 短い画面ではみ出す心配はない。 */
   .start-page .start { margin: 0 auto; gap: 15px; }
+  .start-page .start__section--search,
+  .start-page .start__section--ndc { padding: 1rem 1rem; }
   body.start-page::before,
   body.start-page::after { content: ""; flex: 1 0 0; min-height: 0; }
   body.start-page::after { flex-grow: 2.2; }
