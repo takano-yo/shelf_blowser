@@ -1017,6 +1017,8 @@ body.about-overlay-open .site-header {
   box-shadow: -8px 0 30px rgba(22, 50, 63, 0.2);
   padding: 1.5rem 1.5rem 1.25rem;
   overflow-y: auto;
+  /* パネル端まで達したスクロールを背後の本棚へ伝播させない（背景は固定） */
+  overscroll-behavior: contain;
   animation: slide-in 0.18s ease;
 }
 /* パネル左上の操作ボタン列: 閉じる（✖）・戻る（<）・進む（>）。3 つとも同じ大きさ・
