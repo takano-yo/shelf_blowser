@@ -1165,11 +1165,47 @@ function moveOverlayHistory(delta) {
   }
 }
 
+/* ---------- 背景（本棚）のスクロール固定 ---------- */
+// オーバーレイ表示中は背後の本棚をスクロールさせない。body { overflow: hidden }
+// だけでは iOS Safari などでタッチスクロールが止まらないため、body を position:fixed
+// で固定し、閉じるときに元のスクロール位置へ戻す。複数のオーバーレイが重なっても
+// 破綻しないよう参照カウントで管理する。
+let bodyLock = { count: 0, scrollY: 0 };
+
+function lockBodyScroll() {
+  if (bodyLock.count++ > 0) return;
+  bodyLock.scrollY = window.scrollY;
+  // スクロールバーが消える分だけ横幅が広がって内容がずれるのを防ぐ（PC）。
+  const gutter = window.innerWidth - document.documentElement.clientWidth;
+  const b = document.body.style;
+  if (gutter > 0) b.paddingRight = `${gutter}px`;
+  b.position = 'fixed';
+  b.top = `-${bodyLock.scrollY}px`;
+  b.left = '0';
+  b.right = '0';
+  b.width = '100%';
+  b.overflow = 'hidden';
+}
+
+function unlockBodyScroll() {
+  if (bodyLock.count === 0) return;
+  if (--bodyLock.count > 0) return;
+  const b = document.body.style;
+  b.paddingRight = '';
+  b.position = '';
+  b.top = '';
+  b.left = '';
+  b.right = '';
+  b.width = '';
+  b.overflow = '';
+  window.scrollTo(0, bodyLock.scrollY);
+}
+
 function openOverlay(item) {
   hideCoverDetail();
   ovHistory = { stack: [item], pos: 0 }; // 棚から開くたびに履歴を作り直す
+  if (els.overlay.hidden) lockBodyScroll(); // 二重ロックを避ける
   els.overlay.hidden = false;
-  document.body.style.overflow = 'hidden';
   lastFocused = document.activeElement;
   const panel = els.overlay.querySelector('.overlay__panel');
   // 直前のスワイプで残ったインライン変形/スクロール位置/全体表示状態をリセット。
@@ -1181,10 +1217,11 @@ function openOverlay(item) {
 }
 
 function closeOverlay() {
+  if (els.overlay.hidden) return; // 二重解除を避ける（スワイプ終了と ✖ の同時発火など）
   ovSeq++; // 取得途中の関連書を捨てる（閉じた後に差し込まない）
   hideRelPop();
   els.overlay.hidden = true;
-  if (!els.aboutOverlay || els.aboutOverlay.hidden) document.body.style.overflow = '';
+  unlockBodyScroll();
   const panel = els.overlay.querySelector('.overlay__panel');
   panel.style.transition = '';
   panel.style.transform = '';
@@ -1215,12 +1252,12 @@ function openAboutOverlay() {
   syncAboutHeaderOffset();
   window.addEventListener('resize', syncAboutHeaderOffset);
   document.body.classList.add('about-overlay-open');
+  if (els.aboutOverlay.hidden) lockBodyScroll(); // 二重ロックを避ける
   els.aboutOverlay.hidden = false;
   if (els.aboutOpenBtn) {
     els.aboutOpenBtn.setAttribute('aria-expanded', 'true');
     els.aboutOpenBtn.setAttribute('aria-label', '閉じる');
   }
-  document.body.style.overflow = 'hidden';
   aboutLastFocused = document.activeElement;
   const panel = els.aboutOverlay.querySelector('.overlay__panel');
   panel.scrollTop = 0;
@@ -1228,7 +1265,7 @@ function openAboutOverlay() {
 }
 
 function closeAboutOverlay() {
-  if (!els.aboutOverlay) return;
+  if (!els.aboutOverlay || els.aboutOverlay.hidden) return;
   els.aboutOverlay.hidden = true;
   document.body.classList.remove('about-overlay-open');
   window.removeEventListener('resize', syncAboutHeaderOffset);
@@ -1236,7 +1273,7 @@ function closeAboutOverlay() {
     els.aboutOpenBtn.setAttribute('aria-expanded', 'false');
     els.aboutOpenBtn.removeAttribute('aria-label');
   }
-  if (els.overlay.hidden) document.body.style.overflow = '';
+  unlockBodyScroll();
   if (aboutLastFocused && aboutLastFocused.focus) aboutLastFocused.focus();
   window.scrollTo(0, aboutScrollY); // 開く前の本棚のスクロール位置へ戻す
 }
@@ -1321,6 +1358,9 @@ let tuckAccum = 0;    // 同じ向きに連続してスクロールした量（�
 function updateSearchbarTuck() {
   const bar = els.searchbar;
   if (!bar) return;
+  // オーバーレイ表示中は body を固定しており window.scrollY が 0 になるため、
+  // その見かけの移動で検索バーを退避させない（閉じたときに元の基準へ戻る）。
+  if (bodyLock.count > 0) return;
   const y = Math.max(0, window.scrollY);
   const dy = y - tuckLastY;
   tuckLastY = y;
@@ -1375,60 +1415,71 @@ function syncSortHeadingOption() {
 }
 
 // モバイルのボトムシート操作。
-// ・シート上端（つまみ付近）からのドラッグ：下方向で解除、内容のスクロール位置には依存しない。
-// ・内容を末尾までスクロールした状態からの上方向ドラッグ：シートを全体表示に広げる
-//   （裏画面＝前画面は上部に帯として残す。docs 要件）。
+// ・内容の下スクロール開始（指を上へ動かした瞬間）：シートを全体表示へ拡大する
+//   （裏画面＝前画面は上部に帯として残す。docs 要件）。末尾まで読み進めるのを待たない。
+// ・内容が最上部の状態からの下方向ドラッグ、およびシート上端（つまみ付近）からの
+//   下方向ドラッグ：どちらも同じ「解除」操作としてシートを閉じる。
 function bindSheetSwipe() {
   const panel = els.overlay.querySelector('.overlay__panel');
   if (!panel) return;
-  const DISMISS_PX = 90;      // 上端ドラッグでこの距離以上下へ動かしたら閉じる
-  const EXPAND_PX = 60;       // 末尾からの上ドラッグでこの距離以上動かしたら全体表示にする
-  const HANDLE_ZONE_PX = 36;  // シート上端からこの範囲内で始まったタッチをハンドル操作とみなす
+  const DISMISS_PX = 90;      // 下ドラッグでこの距離以上動かしたら閉じる
+  const EXPAND_PX = 2;        // 下スクロール開始とみなす最小移動量（タップの微動での誤爆防止のみ）
+  const HANDLE_ZONE_PX = 36;  // シート上端からこの範囲内で始まったタッチをつまみ操作とみなす
   const isSheet = () => window.matchMedia('(max-width: 600px)').matches;
-  let startY = 0, mode = null, dragging = false; // mode: 'handle' | 'expand' | null
+  let startX = 0, startY = 0, startScroll = 0, fromHandle = false, dragging = false, active = false;
+
+  // 解除ドラッグを終える（しきい値超なら閉じ、未満なら元位置へスナップバック）。
+  const endDrag = (dy) => {
+    panel.style.transition = 'transform 0.18s ease';
+    if (dy > DISMISS_PX) {
+      // シートを下へ送り出してから閉じる。
+      panel.style.transform = 'translateY(100%)';
+      const done = () => { panel.removeEventListener('transitionend', done); closeOverlay(); };
+      panel.addEventListener('transitionend', done);
+    } else {
+      panel.style.transform = 'translateY(0)';
+    }
+  };
 
   panel.addEventListener('touchstart', (e) => {
-    if (els.overlay.hidden || !isSheet() || e.touches.length !== 1) return;
-    startY = e.touches[0].clientY;
+    active = false;
     dragging = false;
-    const fromTop = startY - panel.getBoundingClientRect().top;
-    const atBottom = panel.scrollHeight - panel.scrollTop - panel.clientHeight <= 1;
-    if (fromTop <= HANDLE_ZONE_PX) mode = 'handle';
-    else if (atBottom) mode = 'expand';
-    else mode = null;
+    if (els.overlay.hidden || !isSheet() || e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    startScroll = panel.scrollTop;
+    fromHandle = (startY - panel.getBoundingClientRect().top) <= HANDLE_ZONE_PX;
+    active = true;
   }, { passive: true });
 
   panel.addEventListener('touchmove', (e) => {
-    if (els.overlay.hidden || !isSheet() || e.touches.length !== 1 || !mode) return;
+    if (!active || els.overlay.hidden || !isSheet() || e.touches.length !== 1) return;
     const dy = e.touches[0].clientY - startY;
-    if (mode === 'handle' && dy > 0) {
-      // 上端ハンドルからの下方向ドラッグ：スクロール位置に関わらず解除操作として扱う。
+    // 関連書の行を横スワイプしたときの縦方向のぶれで誤作動しないよう、
+    // 縦方向の移動が横方向より大きいジェスチャだけを対象にする。
+    const vertical = Math.abs(dy) >= Math.abs(e.touches[0].clientX - startX);
+    if (dragging || (vertical && dy > 0 && (fromHandle || startScroll <= 0))) {
+      // つまみからの下ドラッグ、または最上部からのさらなる上スクロール（＝下ドラッグ）。
+      // どちらも解除操作として扱い、シートを指に追従させる。
       dragging = true;
       panel.style.transition = 'none';
-      panel.style.transform = `translateY(${dy}px)`;
+      panel.style.transform = `translateY(${Math.max(0, dy)}px)`;
       e.preventDefault(); // 内部スクロール/バウンスを抑止
-    } else if (mode === 'expand' && dy < -EXPAND_PX) {
-      // 末尾まで見た状態でさらに上へ引っ張ったら全体表示へ。
+    } else if (vertical && dy < -EXPAND_PX) {
+      // 下スクロールの開始と同時に全体表示へ切り替える。
       els.overlay.classList.add('is-expanded');
-      mode = null; // このドラッグ中は一度だけ発火させる
     }
   }, { passive: false });
 
   panel.addEventListener('touchend', (e) => {
-    if (mode === 'handle' && dragging) {
-      const dy = e.changedTouches[0].clientY - startY;
-      panel.style.transition = 'transform 0.18s ease';
-      if (dy > DISMISS_PX) {
-        // シートを下へ送り出してから閉じる。
-        panel.style.transform = 'translateY(100%)';
-        const done = () => { panel.removeEventListener('transitionend', done); closeOverlay(); };
-        panel.addEventListener('transitionend', done);
-      } else {
-        // しきい値未満は元位置へスナップバック。
-        panel.style.transform = 'translateY(0)';
-      }
-    }
-    mode = null;
+    if (dragging) endDrag(e.changedTouches[0].clientY - startY);
+    active = false;
+    dragging = false;
+  });
+
+  panel.addEventListener('touchcancel', () => {
+    if (dragging) endDrag(0); // 中断時は必ず元位置へ戻す
+    active = false;
     dragging = false;
   });
 }
