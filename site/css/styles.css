@@ -1467,8 +1467,15 @@ a.ov__ndc-btn:focus-visible { color: #fff; background: var(--sky-deep); border-c
     border-top: 4px solid var(--sky);
     border-radius: 16px 16px 0 0;
     animation: slide-up 0.18s ease;
+    transition: height 0.2s ease, max-height 0.2s ease;
     /* 下スワイプで閉じられることを示すドラッグハンドル分の余白 */
-    padding-top: 1.6rem;
+    padding-top: 0.35rem;
+  }
+  /* 上スワイプで全体表示にしたとき。裏画面（前画面）が上部に帯として
+     見える程度の高さを残す（完全な全画面にはしない）。 */
+  .overlay.is-expanded .overlay__panel:not(.overlay__panel--about) {
+    max-height: calc(100% - 3.25rem);
+    height: calc(100% - 3.25rem);
   }
   /* モバイルは横並びにせず縦積み（幅が足りないため）。書影・書誌情報・
      アクション列を上から順に積む。 */
@@ -1476,15 +1483,17 @@ a.ov__ndc-btn:focus-visible { color: #fff; background: var(--sky-deep); border-c
   .ov__actions { min-width: 0; }
   .ov__cover { width: 40%; margin: 0; }
 
-  /* ドラッグハンドル（つまみ）: 下スワイプで閉じられることを示唆 */
+  /* ドラッグハンドル（つまみ）: 上端付近からの上下ドラッグで全体表示/解除できることを示唆。
+     sticky にして内容をスクロールしても常に掴める位置に留める。 */
   .overlay__panel:not(.overlay__panel--about)::before {
     content: "";
-    position: absolute;
-    top: 0.55rem;
-    left: 50%;
-    transform: translateX(-50%);
+    display: block;
+    position: sticky;
+    top: 0.35rem;
+    z-index: 2;
     width: 2.5rem;
     height: 0.3rem;
+    margin: 0 auto 0.85rem;
     border-radius: 999px;
     background: var(--line);
   }

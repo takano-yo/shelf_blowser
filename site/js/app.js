@@ -1172,9 +1172,10 @@ function openOverlay(item) {
   document.body.style.overflow = 'hidden';
   lastFocused = document.activeElement;
   const panel = els.overlay.querySelector('.overlay__panel');
-  // 直前のスワイプで残ったインライン変形/スクロール位置をリセット。
+  // 直前のスワイプで残ったインライン変形/スクロール位置/全体表示状態をリセット。
   panel.style.transition = '';
   panel.style.transform = '';
+  els.overlay.classList.remove('is-expanded');
   renderOverlayView();
   panel.focus();
 }
@@ -1187,6 +1188,7 @@ function closeOverlay() {
   const panel = els.overlay.querySelector('.overlay__panel');
   panel.style.transition = '';
   panel.style.transform = '';
+  els.overlay.classList.remove('is-expanded');
   if (lastFocused && lastFocused.focus) lastFocused.focus();
 }
 
@@ -1372,48 +1374,62 @@ function syncSortHeadingOption() {
   }
 }
 
-// モバイルのボトムシートを下スワイプ（先頭までスクロール済みでの下方向ドラッグ）で
-// 閉じられるようにする。内容が途中までスクロールされている間は通常スクロールを優先。
+// モバイルのボトムシート操作。
+// ・シート上端（つまみ付近）からのドラッグ：下方向で解除、内容のスクロール位置には依存しない。
+// ・内容を末尾までスクロールした状態からの上方向ドラッグ：シートを全体表示に広げる
+//   （裏画面＝前画面は上部に帯として残す。docs 要件）。
 function bindSheetSwipe() {
   const panel = els.overlay.querySelector('.overlay__panel');
   if (!panel) return;
-  const DISMISS_PX = 90;          // この距離以上ドラッグで閉じる
+  const DISMISS_PX = 90;      // 上端ドラッグでこの距離以上下へ動かしたら閉じる
+  const EXPAND_PX = 60;       // 末尾からの上ドラッグでこの距離以上動かしたら全体表示にする
+  const HANDLE_ZONE_PX = 36;  // シート上端からこの範囲内で始まったタッチをハンドル操作とみなす
   const isSheet = () => window.matchMedia('(max-width: 600px)').matches;
-  let startY = 0, startScroll = 0, dragging = false;
+  let startY = 0, mode = null, dragging = false; // mode: 'handle' | 'expand' | null
 
   panel.addEventListener('touchstart', (e) => {
     if (els.overlay.hidden || !isSheet() || e.touches.length !== 1) return;
     startY = e.touches[0].clientY;
-    startScroll = panel.scrollTop;
     dragging = false;
+    const fromTop = startY - panel.getBoundingClientRect().top;
+    const atBottom = panel.scrollHeight - panel.scrollTop - panel.clientHeight <= 1;
+    if (fromTop <= HANDLE_ZONE_PX) mode = 'handle';
+    else if (atBottom) mode = 'expand';
+    else mode = null;
   }, { passive: true });
 
   panel.addEventListener('touchmove', (e) => {
-    if (els.overlay.hidden || !isSheet() || e.touches.length !== 1) return;
+    if (els.overlay.hidden || !isSheet() || e.touches.length !== 1 || !mode) return;
     const dy = e.touches[0].clientY - startY;
-    // 先頭まで戻っている状態での下方向ドラッグのときだけシートを動かす。
-    if (startScroll <= 0 && dy > 0) {
+    if (mode === 'handle' && dy > 0) {
+      // 上端ハンドルからの下方向ドラッグ：スクロール位置に関わらず解除操作として扱う。
       dragging = true;
       panel.style.transition = 'none';
       panel.style.transform = `translateY(${dy}px)`;
       e.preventDefault(); // 内部スクロール/バウンスを抑止
+    } else if (mode === 'expand' && dy < -EXPAND_PX) {
+      // 末尾まで見た状態でさらに上へ引っ張ったら全体表示へ。
+      els.overlay.classList.add('is-expanded');
+      mode = null; // このドラッグ中は一度だけ発火させる
     }
   }, { passive: false });
 
   panel.addEventListener('touchend', (e) => {
-    if (!dragging) return;
-    dragging = false;
-    const dy = e.changedTouches[0].clientY - startY;
-    panel.style.transition = 'transform 0.18s ease';
-    if (dy > DISMISS_PX) {
-      // シートを下へ送り出してから閉じる。
-      panel.style.transform = 'translateY(100%)';
-      const done = () => { panel.removeEventListener('transitionend', done); closeOverlay(); };
-      panel.addEventListener('transitionend', done);
-    } else {
-      // しきい値未満は元位置へスナップバック。
-      panel.style.transform = 'translateY(0)';
+    if (mode === 'handle' && dragging) {
+      const dy = e.changedTouches[0].clientY - startY;
+      panel.style.transition = 'transform 0.18s ease';
+      if (dy > DISMISS_PX) {
+        // シートを下へ送り出してから閉じる。
+        panel.style.transform = 'translateY(100%)';
+        const done = () => { panel.removeEventListener('transitionend', done); closeOverlay(); };
+        panel.addEventListener('transitionend', done);
+      } else {
+        // しきい値未満は元位置へスナップバック。
+        panel.style.transform = 'translateY(0)';
+      }
     }
+    mode = null;
+    dragging = false;
   });
 }
 
